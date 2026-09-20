@@ -1,3 +1,5 @@
+#include <rbl_error.h>
+
 #include "rml_problem_setup.h"
 
 void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
@@ -9,11 +11,13 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->modalSetup = pProblemSetup->modalSetup;
         this->meshSetup = pProblemSetup->meshSetup;
         this->acousticSetup = pProblemSetup->acousticSetup;
+        this->massMatrixType = pProblemSetup->massMatrixType;
     }
 }
 
 RProblemSetup::RProblemSetup()
     : restart(false)
+    , massMatrixType(RMassMatrixType::Consistent)
 {
     this->_init();
 }
@@ -104,11 +108,31 @@ void RProblemSetup::setAcousticSetup(const RAcousticSetup &acousticSetup)
     this->acousticSetup = acousticSetup;
 }
 
+RMassMatrixType RProblemSetup::getMassMatrixType() const
+{
+    return this->massMatrixType;
+}
+
+void RProblemSetup::setMassMatrixType(RMassMatrixType massMatrixType)
+{
+    if (massMatrixType != RMassMatrixType::Consistent &&
+        massMatrixType != RMassMatrixType::Lumped)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Unsupported structural mass-matrix type (%d).",
+                     int(massMatrixType));
+    }
+    this->massMatrixType = massMatrixType;
+}
+
 QString RProblemSetup::toString() const
 {
     return "{ Restart: " + QString(this->restart?"True":"False")
             + ", Radiation setup: " + this->radiationSetup.toString()
             + ", Modal setup: " + this->modalSetup.toString()
             + ", Mesh setup: " + this->meshSetup.toString()
-            + ", Acoustic setup: " + this->acousticSetup.toString() + " }";
+            + ", Acoustic setup: " + this->acousticSetup.toString()
+            + ", Mass matrix: "
+            + QString(this->massMatrixType == RMassMatrixType::Lumped ? "Lumped" : "Consistent")
+            + " }";
 }

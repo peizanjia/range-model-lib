@@ -4460,6 +4460,12 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
     {
         RFileIO::readAscii(inFile,problemSetup.acousticSetup);
     }
+    if (inFile.getVersion() > RVersion(1,3,1))
+    {
+        int massMatrixType;
+        RFileIO::readAscii(inFile,massMatrixType);
+        problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4474,6 +4480,12 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
     if (inFile.getVersion() > RVersion(1,2,0))
     {
         RFileIO::readBinary(inFile,problemSetup.acousticSetup);
+    }
+    if (inFile.getVersion() > RVersion(1,3,1))
+    {
+        int massMatrixType;
+        RFileIO::readBinary(inFile,massMatrixType);
+        problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
     }
 }
 
@@ -4500,6 +4512,11 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,problemSetup.acousticSetup,addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,int(problemSetup.massMatrixType),addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4509,6 +4526,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.modalSetup);
     RFileIO::writeBinary(outFile,problemSetup.meshSetup);
     RFileIO::writeBinary(outFile,problemSetup.acousticSetup);
+    RFileIO::writeBinary(outFile,int(problemSetup.massMatrixType));
 }
 
 
