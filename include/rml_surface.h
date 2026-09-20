@@ -25,8 +25,8 @@ class RSurface : public RElementGroup
 
         //! Surface artificial thickness.
         double thickness;
-        //! Structural formulation used when this surface has non-zero
-        //! thickness and participates in a stress analysis.
+        //! Structural formulation used in a stress analysis. Plane formulas
+        //! require non-zero thickness; axisymmetric formulas do not.
         RElementFormulation structuralFormulation;
 
     public:
@@ -50,8 +50,9 @@ class RSurface : public RElementGroup
         RElementFormulation getStructuralFormulation(void) const;
 
         //! Set structural formulation. Surface groups accept plane stress,
-        //! plane strain and axisymmetric contracts; individual solvers may
-        //! support only a subset and must report the unsupported choice.
+        //! plane strain and axisymmetric contracts. The first axisymmetric
+        //! solver contract uses the global XY meridian plane (X = radius,
+        //! Y = revolution axis, Z = circumferential) and ignores thickness.
         void setStructuralFormulation(RElementFormulation formulation);
 
         //! Return true if point is inside the surface.

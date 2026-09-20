@@ -47,7 +47,8 @@ void TestStructuralProductProfile::reportsElementCapabilityEvidence()
     QVERIFY(tetra.isEnabled());
     QVERIFY(!tetra.isAuxiliary());
 
-    for (RElementType type : {R_ELEMENT_WEDGE1,R_ELEMENT_HEXA1})
+    for (RElementType type : {R_ELEMENT_TRI1,R_ELEMENT_QUAD1,
+                              R_ELEMENT_WEDGE1,R_ELEMENT_HEXA1})
     {
         const RElementCapability solid =
             RStructuralProductProfile::getElementCapability(type);
