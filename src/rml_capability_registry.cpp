@@ -3,6 +3,7 @@
 #include "rml_boundary_condition.h"
 #include "rml_capability_registry.h"
 #include "rml_element.h"
+#include "rml_element_descriptor.h"
 #include "rml_environment_condition.h"
 #include "rml_initial_condition.h"
 #include "rml_material_property.h"
@@ -115,6 +116,7 @@ RCapabilityRegistry buildRegistry()
         const bool tested = testedElement(type);
         QJsonObject metadata;
         metadata.insert(QStringLiteral("auxiliary"),type == R_ELEMENT_POINT);
+        metadata.insert(QStringLiteral("descriptor"),RElementDescriptor::get(type).toJson());
         registry.add(RCapability(RCapabilityDomain::Element,
                                  RElement::getId(type),
                                  RElement::getName(type),

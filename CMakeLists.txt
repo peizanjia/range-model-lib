@@ -7,8 +7,10 @@ qt_add_library(range-model-lib
         src/rml_condition_component.cpp
         src/rml_cut.cpp
         src/rml_capability_registry.cpp
+        src/rml_dof.cpp
         src/rml_eigen_value_solver_conf.cpp
         src/rml_element.cpp
+        src/rml_element_descriptor.cpp
         src/rml_element_capability.cpp
         src/rml_element_group.cpp
         src/rml_element_shape_derivation.cpp
@@ -81,8 +83,10 @@ qt_add_library(range-model-lib
         include/rml_condition_component.h
         include/rml_cut.h
         include/rml_capability_registry.h
+        include/rml_dof.h
         include/rml_eigen_value_solver_conf.h
         include/rml_element.h
+        include/rml_element_descriptor.h
         include/rml_element_capability.h
         include/rml_element_group.h
         include/rml_element_shape_derivation.h
