@@ -1311,33 +1311,29 @@ double RElement::findJacobian(const std::vector<RNode> &nodes, unsigned int iPoi
     if (R_ELEMENT_TYPE_IS_LINE(this->getType()))
     {
         Rt.resize(this->size()*3,this->size()*1);
+        Rt.fill(0.0);
 
         for (uint i=0;i<this->size();i++)
         {
-            for (uint j=0;j<this->size();j++)
-            {
-                Rt[3*i+0][j] = R[0][0];
-                Rt[3*i+1][j] = R[1][0];
-                Rt[3*i+2][j] = R[2][0];
-            }
+            Rt[3*i+0][i] = R[0][0];
+            Rt[3*i+1][i] = R[1][0];
+            Rt[3*i+2][i] = R[2][0];
         }
     }
     else if (R_ELEMENT_TYPE_IS_SURFACE(this->getType()))
     {
         Rt.resize(this->size()*3,this->size()*2);
+        Rt.fill(0.0);
 
         for (uint i=0;i<this->size();i++)
         {
-            for (uint j=0;j<this->size();j++)
-            {
-                Rt[3*i+0][2*j+0] = R[0][0];
-                Rt[3*i+1][2*j+0] = R[1][0];
-                Rt[3*i+2][2*j+0] = R[2][0];
+            Rt[3*i+0][2*i+0] = R[0][0];
+            Rt[3*i+1][2*i+0] = R[1][0];
+            Rt[3*i+2][2*i+0] = R[2][0];
 
-                Rt[3*i+0][2*j+1] = R[0][1];
-                Rt[3*i+1][2*j+1] = R[1][1];
-                Rt[3*i+2][2*j+1] = R[2][1];
-            }
+            Rt[3*i+0][2*i+1] = R[0][1];
+            Rt[3*i+1][2*i+1] = R[1][1];
+            Rt[3*i+2][2*i+1] = R[2][1];
         }
     }
     else if (R_ELEMENT_TYPE_IS_VOLUME(this->getType()) || R_ELEMENT_TYPE_IS_POINT(this->getType()))

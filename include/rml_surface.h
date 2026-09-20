@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "rml_element.h"
+#include "rml_element_descriptor.h"
 #include "rml_element_group.h"
 
 //! Surface element group class
@@ -24,6 +25,9 @@ class RSurface : public RElementGroup
 
         //! Surface artificial thickness.
         double thickness;
+        //! Structural formulation used when this surface has non-zero
+        //! thickness and participates in a stress analysis.
+        RElementFormulation structuralFormulation;
 
     public:
 
@@ -41,6 +45,14 @@ class RSurface : public RElementGroup
 
         //! Set surface group artificial thickness.
         void setThickness ( double thickness );
+
+        //! Return structural formulation.
+        RElementFormulation getStructuralFormulation(void) const;
+
+        //! Set structural formulation. Surface groups accept plane stress,
+        //! plane strain and axisymmetric contracts; individual solvers may
+        //! support only a subset and must report the unsupported choice.
+        void setStructuralFormulation(RElementFormulation formulation);
 
         //! Return true if point is inside the surface.
         //! Surface must be enclosed.

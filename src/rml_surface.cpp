@@ -9,7 +9,9 @@
 const QString RSurface::defaultName("Surface");
 
 
-RSurface::RSurface () : thickness(0.0)
+RSurface::RSurface ()
+    : thickness(0.0),
+      structuralFormulation(RElementFormulation::PlaneStrain)
 {
     this->name = RSurface::defaultName;
     this->_init ();
@@ -32,6 +34,7 @@ void RSurface::_init (const RSurface *pSurface)
     if (pSurface)
     {
         this->setThickness (pSurface->getThickness());
+        this->setStructuralFormulation(pSurface->getStructuralFormulation());
     }
 } /* RSurface::_init */
 
@@ -46,6 +49,26 @@ void RSurface::setThickness (double thickness)
 {
     this->thickness = thickness;
 } /* RSurface::setThickness */
+
+
+RElementFormulation RSurface::getStructuralFormulation(void) const
+{
+    return this->structuralFormulation;
+} /* RSurface::getStructuralFormulation */
+
+
+void RSurface::setStructuralFormulation(RElementFormulation formulation)
+{
+    if (formulation != RElementFormulation::PlaneStress &&
+        formulation != RElementFormulation::PlaneStrain &&
+        formulation != RElementFormulation::Axisymmetric)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Unsupported structural surface formulation '%s'.",
+                     RElementDescriptor::formulationToId(formulation).toUtf8().constData());
+    }
+    this->structuralFormulation = formulation;
+} /* RSurface::setStructuralFormulation */
 
 
 bool RSurface::pointInside(const std::vector<RNode> &nodes, const std::vector<RElement> &elements, const RR3Vector &point, bool includeSurface) const

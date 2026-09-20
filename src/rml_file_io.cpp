@@ -32,10 +32,12 @@ void RFileIO::writeNewLineAscii(RFile &outFile)
 
 void RFileIO::readAscii(RFile &inFile, bool &bValue)
 {
-    char c;
-    inFile.getTextStream() >> c;
-    bValue = (c == 0);
-    if (inFile.getTextStream().status() != QTextStream::Ok)
+    QTextStream &stream = inFile.getTextStream();
+    stream.skipWhiteSpace();
+    QChar value;
+    stream >> value;
+    bValue = (value.unicode() == 1 || value == QLatin1Char('1'));
+    if (stream.status() != QTextStream::Ok)
     {
         throw RError(RError::Type::ReadFile,R_ERROR_REF, "Failed to read bool value.");
     }
@@ -3361,12 +3363,24 @@ void RFileIO::readAscii(RFile &inFile, RSurface &surface)
 {
     RFileIO::readAscii(inFile,static_cast<RElementGroup&>(surface));
     RFileIO::readAscii(inFile,surface.thickness);
+    if (inFile.getVersion() > RVersion(1,3,0))
+    {
+        unsigned int formulation = 0;
+        RFileIO::readAscii(inFile,formulation);
+        surface.setStructuralFormulation(static_cast<RElementFormulation>(formulation));
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RSurface &surface)
 {
     RFileIO::readBinary(inFile,static_cast<RElementGroup&>(surface));
     RFileIO::readBinary(inFile,surface.thickness);
+    if (inFile.getVersion() > RVersion(1,3,0))
+    {
+        unsigned int formulation = 0;
+        RFileIO::readBinary(inFile,formulation);
+        surface.setStructuralFormulation(static_cast<RElementFormulation>(formulation));
+    }
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RSurface &surface, bool addNewLine)
@@ -3377,12 +3391,18 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RSurface &surface, bool addNe
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,surface.thickness,addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,static_cast<unsigned int>(surface.structuralFormulation),addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RSurface &surface)
 {
     RFileIO::writeBinary(outFile,static_cast<const RElementGroup&>(surface));
     RFileIO::writeBinary(outFile,surface.thickness);
+    RFileIO::writeBinary(outFile,static_cast<unsigned int>(surface.structuralFormulation));
 }
 
 
