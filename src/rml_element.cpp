@@ -571,6 +571,17 @@ bool RElement::findVolume(const std::vector<RNode> &nodes, double &volume) const
         const RNode &n4 = nodes[this->getNodeId(3)];
         volume = RTetrahedron::findVolume(n1,n2,n3,n4);
     }
+    else
+    {
+        volume = 0.0;
+        for (unsigned int i=0;i<RElement::getNIntegrationPoints(this->getType());i++)
+        {
+            RRMatrix J;
+            RRMatrix Rt;
+            const double detJ = this->findJacobian(nodes,i,J,Rt);
+            volume += std::abs(detJ)*RElement::getShapeFunction(this->getType(),i).getW();
+        }
+    }
 
     return true;
 } /* RElement::findVolume */
@@ -1589,6 +1600,50 @@ std::vector<RElement> RElement::generateEdgeElements(void) const
 
             break;
         }
+        case R_ELEMENT_WEDGE1:
+        {
+            const uint faces[5][4] = {
+                {0,2,1,RConstants::eod},
+                {3,4,5,RConstants::eod},
+                {0,1,4,3},
+                {1,2,5,4},
+                {2,0,3,5}
+            };
+
+            for (uint i=0;i<5;i++)
+            {
+                const bool triangle = faces[i][3] == RConstants::eod;
+                RElement face(triangle ? R_ELEMENT_TRI1 : R_ELEMENT_QUAD1);
+                for (uint j=0;j<face.size();j++)
+                {
+                    face.setNodeId(j,this->getNodeId(faces[i][j]));
+                }
+                edgeElements.push_back(face);
+            }
+            break;
+        }
+        case R_ELEMENT_HEXA1:
+        {
+            const uint faces[6][4] = {
+                {0,3,2,1},
+                {4,5,6,7},
+                {0,1,5,4},
+                {1,2,6,5},
+                {2,3,7,6},
+                {3,0,4,7}
+            };
+
+            for (uint i=0;i<6;i++)
+            {
+                RElement face(R_ELEMENT_QUAD1);
+                for (uint j=0;j<4;j++)
+                {
+                    face.setNodeId(j,this->getNodeId(faces[i][j]));
+                }
+                edgeElements.push_back(face);
+            }
+            break;
+        }
         default:
         {
             break;
@@ -2396,9 +2451,101 @@ std::vector<RElementShapeFunction> RElement::generateShapeFunctionValues(RElemen
             shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0/24.0));
             break;
         case R_ELEMENT_WEDGE1:
+        {
+            N.resize(6);
+            dN.resize(6,3);
+
+            const double trianglePoints[3][2] = {
+                {1.0/6.0,1.0/6.0},
+                {2.0/3.0,1.0/6.0},
+                {1.0/6.0,2.0/3.0}
+            };
+            const double linePoints[2] = {-_invsqrt3,_invsqrt3};
+
+            for (uint k=0;k<2;k++)
+            {
+                zeta = linePoints[k];
+                for (uint p=0;p<3;p++)
+                {
+                    ksi = trianglePoints[p][0];
+                    eta = trianglePoints[p][1];
+                    const double l0 = 1.0-ksi-eta;
+
+                    N[0] = 0.5*(1.0-zeta)*l0;
+                    N[1] = 0.5*(1.0-zeta)*ksi;
+                    N[2] = 0.5*(1.0-zeta)*eta;
+                    N[3] = 0.5*(1.0+zeta)*l0;
+                    N[4] = 0.5*(1.0+zeta)*ksi;
+                    N[5] = 0.5*(1.0+zeta)*eta;
+
+                    dN[0][0] = -0.5*(1.0-zeta);
+                    dN[1][0] =  0.5*(1.0-zeta);
+                    dN[2][0] =  0.0;
+                    dN[3][0] = -0.5*(1.0+zeta);
+                    dN[4][0] =  0.5*(1.0+zeta);
+                    dN[5][0] =  0.0;
+
+                    dN[0][1] = -0.5*(1.0-zeta);
+                    dN[1][1] =  0.0;
+                    dN[2][1] =  0.5*(1.0-zeta);
+                    dN[3][1] = -0.5*(1.0+zeta);
+                    dN[4][1] =  0.0;
+                    dN[5][1] =  0.5*(1.0+zeta);
+
+                    dN[0][2] = -0.5*l0;
+                    dN[1][2] = -0.5*ksi;
+                    dN[2][2] = -0.5*eta;
+                    dN[3][2] =  0.5*l0;
+                    dN[4][2] =  0.5*ksi;
+                    dN[5][2] =  0.5*eta;
+
+                    shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0/6.0));
+                }
+            }
             break;
+        }
         case R_ELEMENT_HEXA1:
+        {
+            N.resize(8);
+            dN.resize(8,3);
+
+            const double signs[8][3] = {
+                {-1.0,-1.0,-1.0},
+                { 1.0,-1.0,-1.0},
+                { 1.0, 1.0,-1.0},
+                {-1.0, 1.0,-1.0},
+                {-1.0,-1.0, 1.0},
+                { 1.0,-1.0, 1.0},
+                { 1.0, 1.0, 1.0},
+                {-1.0, 1.0, 1.0}
+            };
+            const double points[2] = {-_invsqrt3,_invsqrt3};
+
+            for (uint k=0;k<2;k++)
+            {
+                zeta = points[k];
+                for (uint j=0;j<2;j++)
+                {
+                    eta = points[j];
+                    for (uint i=0;i<2;i++)
+                    {
+                        ksi = points[i];
+                        for (uint n=0;n<8;n++)
+                        {
+                            const double sx = signs[n][0];
+                            const double sy = signs[n][1];
+                            const double sz = signs[n][2];
+                            N[n] = (1.0+sx*ksi)*(1.0+sy*eta)*(1.0+sz*zeta)/8.0;
+                            dN[n][0] = sx*(1.0+sy*eta)*(1.0+sz*zeta)/8.0;
+                            dN[n][1] = sy*(1.0+sx*ksi)*(1.0+sz*zeta)/8.0;
+                            dN[n][2] = sz*(1.0+sx*ksi)*(1.0+sy*eta)/8.0;
+                        }
+                        shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0));
+                    }
+                }
+            }
             break;
+        }
         case R_ELEMENT_NONE:
         default:
             break;

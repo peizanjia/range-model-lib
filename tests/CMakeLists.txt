@@ -11,6 +11,7 @@ set(range_model_lib_tests
     tst_node
     tst_element
     tst_element_descriptor
+    tst_element_volume
     tst_segment
     tst_triangle
     tst_tetrahedron

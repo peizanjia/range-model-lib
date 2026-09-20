@@ -69,8 +69,8 @@ typedef enum _RElementType
     R_ELEMENT_QUAD1,
     R_ELEMENT_QUAD2, // Not implemented
     R_ELEMENT_TETRA1,
-    R_ELEMENT_WEDGE1, // Not implemented
-    R_ELEMENT_HEXA1, // Not implemented
+    R_ELEMENT_WEDGE1,
+    R_ELEMENT_HEXA1,
     R_ELEMENT_N_TYPES
 } RElementType;
 

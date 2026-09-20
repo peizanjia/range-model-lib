@@ -47,6 +47,18 @@ void TestStructuralProductProfile::reportsElementCapabilityEvidence()
     QVERIFY(tetra.isEnabled());
     QVERIFY(!tetra.isAuxiliary());
 
+    for (RElementType type : {R_ELEMENT_WEDGE1,R_ELEMENT_HEXA1})
+    {
+        const RElementCapability solid =
+            RStructuralProductProfile::getElementCapability(type);
+        QVERIFY(solid.isRegistered());
+        QVERIFY(solid.isFormulationImplemented());
+        QVERIFY(solid.isAutomatedTested());
+        QVERIFY(solid.isReferenceHostValidated());
+        QVERIFY(solid.isEnabled());
+        QVERIFY(!solid.isAuxiliary());
+    }
+
     const RElementCapability point =
         RStructuralProductProfile::getElementCapability(R_ELEMENT_POINT);
     QVERIFY(point.isEnabled());
