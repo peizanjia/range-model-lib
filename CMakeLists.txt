@@ -6,8 +6,10 @@ qt_add_library(range-model-lib
         src/rml_condition.cpp
         src/rml_condition_component.cpp
         src/rml_cut.cpp
+        src/rml_capability_registry.cpp
         src/rml_eigen_value_solver_conf.cpp
         src/rml_element.cpp
+        src/rml_element_capability.cpp
         src/rml_element_group.cpp
         src/rml_element_shape_derivation.cpp
         src/rml_element_shape_function.cpp
@@ -47,8 +49,10 @@ qt_add_library(range-model-lib
         src/rml_point.cpp
         src/rml_polygon.cpp
         src/rml_problem.cpp
+        src/rml_problem_capability.cpp
         src/rml_problem_setup.cpp
         src/rml_problem_task_item.cpp
+        src/rml_structural_product_profile.cpp
         src/rml_radiation_setup.cpp
         src/rml_results.cpp
         src/rml_save_file.cpp
@@ -76,8 +80,10 @@ qt_add_library(range-model-lib
         include/rml_condition.h
         include/rml_condition_component.h
         include/rml_cut.h
+        include/rml_capability_registry.h
         include/rml_eigen_value_solver_conf.h
         include/rml_element.h
+        include/rml_element_capability.h
         include/rml_element_group.h
         include/rml_element_shape_derivation.h
         include/rml_element_shape_function.h
@@ -117,9 +123,11 @@ qt_add_library(range-model-lib
         include/rml_point.h
         include/rml_polygon.h
         include/rml_problem.h
+        include/rml_problem_capability.h
         include/rml_problem_setup.h
         include/rml_problem_task_item.h
         include/rml_problem_type.h
+        include/rml_structural_product_profile.h
         include/rml_radiation_setup.h
         include/rml_results.h
         include/rml_save_file.h
