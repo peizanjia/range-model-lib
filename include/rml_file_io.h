@@ -39,6 +39,7 @@
 #include "rml_problem_task_item.h"
 #include "rml_sparse_vector.h"
 #include "rml_stream_line.h"
+#include "rml_structural_interaction.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -798,6 +799,13 @@ class RFileIO
         static void writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine = true);
         //! Write RProblemSetup.
         static void writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup);
+
+        // RStructuralInteractionSetup
+
+        static void readAscii(RFile &inFile, RStructuralInteractionSetup &setup);
+        static void readBinary(RFile &inFile, RStructuralInteractionSetup &setup);
+        static void writeAscii(RSaveFile &outFile, const RStructuralInteractionSetup &setup, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralInteractionSetup &setup);
 
         // RRadiationResolution
 

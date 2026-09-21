@@ -5,6 +5,7 @@
 #include "rml_mesh_setup.h"
 #include "rml_modal_setup.h"
 #include "rml_radiation_setup.h"
+#include "rml_structural_interaction.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -30,6 +31,8 @@ class RProblemSetup
         RAcousticSetup acousticSetup;
         //! Structural mass-matrix type.
         RMassMatrixType massMatrixType;
+        //! Structural constraints, couplings, sensors and actuators.
+        RStructuralInteractionSetup structuralInteractionSetup;
 
     private:
 
@@ -97,6 +100,10 @@ class RProblemSetup
 
         //! Set structural mass-matrix type.
         void setMassMatrixType(RMassMatrixType massMatrixType);
+
+        const RStructuralInteractionSetup &getStructuralInteractionSetup() const;
+        RStructuralInteractionSetup &getStructuralInteractionSetup();
+        void setStructuralInteractionSetup(const RStructuralInteractionSetup &setup);
 
         //! Convert to printable string.
         QString toString() const;

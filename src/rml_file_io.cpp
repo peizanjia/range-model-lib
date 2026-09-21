@@ -4513,6 +4513,10 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readAscii(inFile,massMatrixType);
         problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
     }
+    if (inFile.getVersion() > RVersion(1,3,4))
+    {
+        RFileIO::readAscii(inFile,problemSetup.structuralInteractionSetup);
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4533,6 +4537,10 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         int massMatrixType;
         RFileIO::readBinary(inFile,massMatrixType);
         problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
+    }
+    if (inFile.getVersion() > RVersion(1,3,4))
+    {
+        RFileIO::readBinary(inFile,problemSetup.structuralInteractionSetup);
     }
 }
 
@@ -4564,6 +4572,11 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,int(problemSetup.massMatrixType),addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,problemSetup.structuralInteractionSetup,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4574,6 +4587,226 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.meshSetup);
     RFileIO::writeBinary(outFile,problemSetup.acousticSetup);
     RFileIO::writeBinary(outFile,int(problemSetup.massMatrixType));
+    RFileIO::writeBinary(outFile,problemSetup.structuralInteractionSetup);
+}
+
+
+/*********************************************************************
+ *  RStructuralInteractionSetup                                      *
+ *********************************************************************/
+
+void RFileIO::readAscii(RFile &inFile, RStructuralInteractionSetup &setup)
+{
+    auto readTarget = [&inFile](RStructuralTarget &target)
+    {
+        int value = 0;
+        RFileIO::readAscii(inFile,value); target.scope = static_cast<RStructuralTargetScope>(value);
+        RFileIO::readAscii(inFile,target.nodeId);
+        RFileIO::readAscii(inFile,target.setName);
+        RFileIO::readAscii(inFile,value); target.entityType = static_cast<REntityGroupType>(value);
+    };
+    uint count = 0;
+    RFileIO::readAscii(inFile,count);
+    setup.linearConstraints.resize(count);
+    for (RLinearConstraint &constraint : setup.linearConstraints)
+    {
+        RFileIO::readAscii(inFile,constraint.id);
+        RFileIO::readAscii(inFile,constraint.name);
+        RFileIO::readAscii(inFile,constraint.rhs);
+        uint nTerms = 0; RFileIO::readAscii(inFile,nTerms); constraint.terms.resize(nTerms);
+        for (RLinearConstraintTerm &term : constraint.terms)
+        {
+            int dof = 0;
+            RFileIO::readAscii(inFile,term.reference.nodeId);
+            RFileIO::readAscii(inFile,dof); term.reference.dof = static_cast<RDofType>(dof);
+            RFileIO::readAscii(inFile,term.coefficient);
+        }
+    }
+    RFileIO::readAscii(inFile,count);
+    setup.couplings.resize(count);
+    for (RStructuralCoupling &coupling : setup.couplings)
+    {
+        int value = 0;
+        RFileIO::readAscii(inFile,coupling.id); RFileIO::readAscii(inFile,coupling.name);
+        RFileIO::readAscii(inFile,value); coupling.type = static_cast<RStructuralCouplingType>(value);
+        RFileIO::readAscii(inFile,coupling.referenceNode);
+        RFileIO::readAscii(inFile,coupling.masterSet); RFileIO::readAscii(inFile,coupling.slaveSet);
+        RFileIO::readAscii(inFile,value); coupling.entityType = static_cast<REntityGroupType>(value);
+        uint nDofs = 0; RFileIO::readAscii(inFile,nDofs); coupling.dofs.resize(nDofs);
+        for (RDofType &dof : coupling.dofs) { RFileIO::readAscii(inFile,value); dof = static_cast<RDofType>(value); }
+        RFileIO::readAscii(inFile,coupling.tolerance);
+    }
+    RFileIO::readAscii(inFile,count);
+    setup.sensors.resize(count);
+    for (RStructuralSensor &sensor : setup.sensors)
+    {
+        int value = 0;
+        RFileIO::readAscii(inFile,sensor.id); RFileIO::readAscii(inFile,sensor.name); readTarget(sensor.target);
+        RFileIO::readAscii(inFile,value); sensor.quantity = static_cast<RStructuralSensorQuantity>(value);
+        RFileIO::readAscii(inFile,value); sensor.aggregation = static_cast<RStructuralSensorAggregation>(value);
+        RFileIO::readAscii(inFile,value); sensor.frame = static_cast<RStructuralFrame>(value);
+        RFileIO::readAscii(inFile,sensor.direction); RFileIO::readAscii(inFile,sensor.unit);
+    }
+    RFileIO::readAscii(inFile,count);
+    setup.actuators.resize(count);
+    for (RStructuralActuator &actuator : setup.actuators)
+    {
+        int value = 0;
+        RFileIO::readAscii(inFile,actuator.id); RFileIO::readAscii(inFile,actuator.name);
+        RFileIO::readAscii(inFile,value); actuator.type = static_cast<RStructuralActuatorType>(value);
+        readTarget(actuator.target);
+        RFileIO::readAscii(inFile,value); actuator.variable = static_cast<RVariableType>(value);
+        RFileIO::readAscii(inFile,value); actuator.frame = static_cast<RStructuralFrame>(value);
+        RFileIO::readAscii(inFile,actuator.direction); RFileIO::readAscii(inFile,actuator.unit);
+        RFileIO::readAscii(inFile,actuator.minimum); RFileIO::readAscii(inFile,actuator.maximum); RFileIO::readAscii(inFile,actuator.rateLimit);
+    }
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralInteractionSetup &setup)
+{
+    auto readTarget = [&inFile](RStructuralTarget &target)
+    {
+        int value = 0;
+        RFileIO::readBinary(inFile,value); target.scope = static_cast<RStructuralTargetScope>(value);
+        RFileIO::readBinary(inFile,target.nodeId); RFileIO::readBinary(inFile,target.setName);
+        RFileIO::readBinary(inFile,value); target.entityType = static_cast<REntityGroupType>(value);
+    };
+    uint count = 0;
+    RFileIO::readBinary(inFile,count); setup.linearConstraints.resize(count);
+    for (RLinearConstraint &constraint : setup.linearConstraints)
+    {
+        RFileIO::readBinary(inFile,constraint.id); RFileIO::readBinary(inFile,constraint.name); RFileIO::readBinary(inFile,constraint.rhs);
+        uint nTerms = 0; RFileIO::readBinary(inFile,nTerms); constraint.terms.resize(nTerms);
+        for (RLinearConstraintTerm &term : constraint.terms)
+        {
+            int dof = 0; RFileIO::readBinary(inFile,term.reference.nodeId); RFileIO::readBinary(inFile,dof);
+            term.reference.dof = static_cast<RDofType>(dof); RFileIO::readBinary(inFile,term.coefficient);
+        }
+    }
+    RFileIO::readBinary(inFile,count); setup.couplings.resize(count);
+    for (RStructuralCoupling &coupling : setup.couplings)
+    {
+        int value = 0;
+        RFileIO::readBinary(inFile,coupling.id); RFileIO::readBinary(inFile,coupling.name);
+        RFileIO::readBinary(inFile,value); coupling.type = static_cast<RStructuralCouplingType>(value);
+        RFileIO::readBinary(inFile,coupling.referenceNode); RFileIO::readBinary(inFile,coupling.masterSet); RFileIO::readBinary(inFile,coupling.slaveSet);
+        RFileIO::readBinary(inFile,value); coupling.entityType = static_cast<REntityGroupType>(value);
+        uint nDofs = 0; RFileIO::readBinary(inFile,nDofs); coupling.dofs.resize(nDofs);
+        for (RDofType &dof : coupling.dofs) { RFileIO::readBinary(inFile,value); dof = static_cast<RDofType>(value); }
+        RFileIO::readBinary(inFile,coupling.tolerance);
+    }
+    RFileIO::readBinary(inFile,count); setup.sensors.resize(count);
+    for (RStructuralSensor &sensor : setup.sensors)
+    {
+        int value = 0;
+        RFileIO::readBinary(inFile,sensor.id); RFileIO::readBinary(inFile,sensor.name); readTarget(sensor.target);
+        RFileIO::readBinary(inFile,value); sensor.quantity = static_cast<RStructuralSensorQuantity>(value);
+        RFileIO::readBinary(inFile,value); sensor.aggregation = static_cast<RStructuralSensorAggregation>(value);
+        RFileIO::readBinary(inFile,value); sensor.frame = static_cast<RStructuralFrame>(value);
+        RFileIO::readBinary(inFile,sensor.direction); RFileIO::readBinary(inFile,sensor.unit);
+    }
+    RFileIO::readBinary(inFile,count); setup.actuators.resize(count);
+    for (RStructuralActuator &actuator : setup.actuators)
+    {
+        int value = 0;
+        RFileIO::readBinary(inFile,actuator.id); RFileIO::readBinary(inFile,actuator.name);
+        RFileIO::readBinary(inFile,value); actuator.type = static_cast<RStructuralActuatorType>(value); readTarget(actuator.target);
+        RFileIO::readBinary(inFile,value); actuator.variable = static_cast<RVariableType>(value);
+        RFileIO::readBinary(inFile,value); actuator.frame = static_cast<RStructuralFrame>(value);
+        RFileIO::readBinary(inFile,actuator.direction); RFileIO::readBinary(inFile,actuator.unit);
+        RFileIO::readBinary(inFile,actuator.minimum); RFileIO::readBinary(inFile,actuator.maximum); RFileIO::readBinary(inFile,actuator.rateLimit);
+    }
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralInteractionSetup &setup, bool)
+{
+    auto writeString = [&outFile](const QString &value)
+    {
+        QString escaped(value);
+        escaped.replace('"',QString());
+        RFileIO::writeAscii(outFile,'"' + escaped + '"');
+    };
+    auto writeTarget = [&outFile](const RStructuralTarget &target)
+    {
+        RFileIO::writeAscii(outFile,int(target.scope)); RFileIO::writeAscii(outFile,target.nodeId);
+        QString escaped(target.setName); escaped.replace('"',QString());
+        RFileIO::writeAscii(outFile,'"' + escaped + '"'); RFileIO::writeAscii(outFile,int(target.entityType));
+    };
+    RFileIO::writeAscii(outFile,uint(setup.linearConstraints.size()));
+    for (const RLinearConstraint &constraint : setup.linearConstraints)
+    {
+        writeString(constraint.id); writeString(constraint.name); RFileIO::writeAscii(outFile,constraint.rhs);
+        RFileIO::writeAscii(outFile,uint(constraint.terms.size()));
+        for (const RLinearConstraintTerm &term : constraint.terms)
+        {
+            RFileIO::writeAscii(outFile,term.reference.nodeId); RFileIO::writeAscii(outFile,int(term.reference.dof)); RFileIO::writeAscii(outFile,term.coefficient);
+        }
+    }
+    RFileIO::writeAscii(outFile,uint(setup.couplings.size()));
+    for (const RStructuralCoupling &coupling : setup.couplings)
+    {
+        writeString(coupling.id); writeString(coupling.name); RFileIO::writeAscii(outFile,int(coupling.type));
+        RFileIO::writeAscii(outFile,coupling.referenceNode); writeString(coupling.masterSet); writeString(coupling.slaveSet);
+        RFileIO::writeAscii(outFile,int(coupling.entityType)); RFileIO::writeAscii(outFile,uint(coupling.dofs.size()));
+        for (RDofType dof : coupling.dofs) RFileIO::writeAscii(outFile,int(dof));
+        RFileIO::writeAscii(outFile,coupling.tolerance);
+    }
+    RFileIO::writeAscii(outFile,uint(setup.sensors.size()));
+    for (const RStructuralSensor &sensor : setup.sensors)
+    {
+        writeString(sensor.id); writeString(sensor.name); writeTarget(sensor.target);
+        RFileIO::writeAscii(outFile,int(sensor.quantity)); RFileIO::writeAscii(outFile,int(sensor.aggregation)); RFileIO::writeAscii(outFile,int(sensor.frame));
+        RFileIO::writeAscii(outFile,sensor.direction); writeString(sensor.unit);
+    }
+    RFileIO::writeAscii(outFile,uint(setup.actuators.size()));
+    for (const RStructuralActuator &actuator : setup.actuators)
+    {
+        writeString(actuator.id); writeString(actuator.name); RFileIO::writeAscii(outFile,int(actuator.type)); writeTarget(actuator.target);
+        RFileIO::writeAscii(outFile,int(actuator.variable)); RFileIO::writeAscii(outFile,int(actuator.frame)); RFileIO::writeAscii(outFile,actuator.direction);
+        writeString(actuator.unit); RFileIO::writeAscii(outFile,actuator.minimum); RFileIO::writeAscii(outFile,actuator.maximum); RFileIO::writeAscii(outFile,actuator.rateLimit);
+    }
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralInteractionSetup &setup)
+{
+    auto writeTarget = [&outFile](const RStructuralTarget &target)
+    {
+        RFileIO::writeBinary(outFile,int(target.scope)); RFileIO::writeBinary(outFile,target.nodeId);
+        RFileIO::writeBinary(outFile,target.setName); RFileIO::writeBinary(outFile,int(target.entityType));
+    };
+    RFileIO::writeBinary(outFile,uint(setup.linearConstraints.size()));
+    for (const RLinearConstraint &constraint : setup.linearConstraints)
+    {
+        RFileIO::writeBinary(outFile,constraint.id); RFileIO::writeBinary(outFile,constraint.name); RFileIO::writeBinary(outFile,constraint.rhs);
+        RFileIO::writeBinary(outFile,uint(constraint.terms.size()));
+        for (const RLinearConstraintTerm &term : constraint.terms)
+        {
+            RFileIO::writeBinary(outFile,term.reference.nodeId); RFileIO::writeBinary(outFile,int(term.reference.dof)); RFileIO::writeBinary(outFile,term.coefficient);
+        }
+    }
+    RFileIO::writeBinary(outFile,uint(setup.couplings.size()));
+    for (const RStructuralCoupling &coupling : setup.couplings)
+    {
+        RFileIO::writeBinary(outFile,coupling.id); RFileIO::writeBinary(outFile,coupling.name); RFileIO::writeBinary(outFile,int(coupling.type));
+        RFileIO::writeBinary(outFile,coupling.referenceNode); RFileIO::writeBinary(outFile,coupling.masterSet); RFileIO::writeBinary(outFile,coupling.slaveSet);
+        RFileIO::writeBinary(outFile,int(coupling.entityType)); RFileIO::writeBinary(outFile,uint(coupling.dofs.size()));
+        for (RDofType dof : coupling.dofs) RFileIO::writeBinary(outFile,int(dof));
+        RFileIO::writeBinary(outFile,coupling.tolerance);
+    }
+    RFileIO::writeBinary(outFile,uint(setup.sensors.size()));
+    for (const RStructuralSensor &sensor : setup.sensors)
+    {
+        RFileIO::writeBinary(outFile,sensor.id); RFileIO::writeBinary(outFile,sensor.name); writeTarget(sensor.target);
+        RFileIO::writeBinary(outFile,int(sensor.quantity)); RFileIO::writeBinary(outFile,int(sensor.aggregation)); RFileIO::writeBinary(outFile,int(sensor.frame));
+        RFileIO::writeBinary(outFile,sensor.direction); RFileIO::writeBinary(outFile,sensor.unit);
+    }
+    RFileIO::writeBinary(outFile,uint(setup.actuators.size()));
+    for (const RStructuralActuator &actuator : setup.actuators)
+    {
+        RFileIO::writeBinary(outFile,actuator.id); RFileIO::writeBinary(outFile,actuator.name); RFileIO::writeBinary(outFile,int(actuator.type)); writeTarget(actuator.target);
+        RFileIO::writeBinary(outFile,int(actuator.variable)); RFileIO::writeBinary(outFile,int(actuator.frame)); RFileIO::writeBinary(outFile,actuator.direction);
+        RFileIO::writeBinary(outFile,actuator.unit); RFileIO::writeBinary(outFile,actuator.minimum); RFileIO::writeBinary(outFile,actuator.maximum); RFileIO::writeBinary(outFile,actuator.rateLimit);
+    }
 }
 
 

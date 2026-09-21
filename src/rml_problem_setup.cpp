@@ -12,6 +12,7 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->meshSetup = pProblemSetup->meshSetup;
         this->acousticSetup = pProblemSetup->acousticSetup;
         this->massMatrixType = pProblemSetup->massMatrixType;
+        this->structuralInteractionSetup = pProblemSetup->structuralInteractionSetup;
     }
 }
 
@@ -125,6 +126,21 @@ void RProblemSetup::setMassMatrixType(RMassMatrixType massMatrixType)
     this->massMatrixType = massMatrixType;
 }
 
+const RStructuralInteractionSetup &RProblemSetup::getStructuralInteractionSetup() const
+{
+    return this->structuralInteractionSetup;
+}
+
+RStructuralInteractionSetup &RProblemSetup::getStructuralInteractionSetup()
+{
+    return this->structuralInteractionSetup;
+}
+
+void RProblemSetup::setStructuralInteractionSetup(const RStructuralInteractionSetup &setup)
+{
+    this->structuralInteractionSetup = setup;
+}
+
 QString RProblemSetup::toString() const
 {
     return "{ Restart: " + QString(this->restart?"True":"False")
@@ -134,5 +150,9 @@ QString RProblemSetup::toString() const
             + ", Acoustic setup: " + this->acousticSetup.toString()
             + ", Mass matrix: "
             + QString(this->massMatrixType == RMassMatrixType::Lumped ? "Lumped" : "Consistent")
+            + ", Structural constraints: " + QString::number(this->structuralInteractionSetup.getLinearConstraints().size())
+            + ", Couplings: " + QString::number(this->structuralInteractionSetup.getCouplings().size())
+            + ", Sensors: " + QString::number(this->structuralInteractionSetup.getSensors().size())
+            + ", Actuators: " + QString::number(this->structuralInteractionSetup.getActuators().size())
             + " }";
 }
