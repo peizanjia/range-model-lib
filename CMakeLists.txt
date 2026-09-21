@@ -31,6 +31,7 @@ qt_add_library(range-model-lib
         src/rml_iso.cpp
         src/rml_line.cpp
         src/rml_material.cpp
+        src/rml_material_evaluation.cpp
         src/rml_material_property.cpp
         src/rml_matrix_solver_conf.cpp
         src/rml_mesh_generator.cpp
@@ -107,6 +108,7 @@ qt_add_library(range-model-lib
         include/rml_iso.h
         include/rml_line.h
         include/rml_material.h
+        include/rml_material_evaluation.h
         include/rml_material_property.h
         include/rml_matrix_solver_conf.h
         include/rml_mesh_generator.h

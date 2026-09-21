@@ -1,6 +1,8 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
+#include <rbl_error.h>
+
 #include "rml_material.h"
 
 class TestMaterial : public QObject
@@ -13,6 +15,7 @@ private slots:
     void jsonRoundTrip();
     void fileRoundTrip();
     void fileRoundTrip_data();
+    void evaluationContext();
 };
 
 void TestMaterial::defaultFileExtension()
@@ -91,6 +94,40 @@ void TestMaterial::fileRoundTrip()
     QCOMPARE(readMaterial.getState(), material.getState());
     QCOMPARE(readMaterial.size(), material.size());
     QVERIFY(readMaterial.propertiesEqual(material));
+}
+
+void TestMaterial::evaluationContext()
+{
+    RMaterial material;
+    RMaterialProperty density(RMaterialProperty::Density);
+    density.clear();
+    density.add(300.0,1000.0);
+    density.add(400.0,900.0);
+    material.add(density);
+
+    RMaterialPointState committed;
+    committed.set("plastic-strain",0.125);
+
+    RMaterialEvaluationContext context;
+    context.setTime(2.0);
+    context.setTimeStep(0.01);
+    context.setField(R_VARIABLE_TEMPERATURE,350.0);
+    context.setStrain({0.01,0.0,0.0});
+    context.setStrainIncrement({0.001,0.0,0.0});
+    context.setCommittedState(committed);
+
+    const RMaterialEvaluationResult result = material.evaluateProperty(RMaterialProperty::Density,context);
+    QCOMPARE(result.getValue(),950.0);
+    QCOMPARE(result.getBehaviorId(),QString("builtin.table.v1"));
+    QCOMPARE(result.getTrialState().get("plastic-strain"),0.125);
+    QCOMPARE(context.getTime(),2.0);
+    QCOMPARE(context.getTimeStep(),0.01);
+    QCOMPARE(context.getStrain().size(),3);
+    QCOMPARE(context.getStrainIncrement().size(),3);
+
+    RMaterialEvaluationContext missingField;
+    QVERIFY_EXCEPTION_THROWN(material.evaluateProperty(RMaterialProperty::Density,missingField),RError);
+    QVERIFY_EXCEPTION_THROWN(material.evaluateProperty(RMaterialProperty::PoissonRatio,context),RError);
 }
 
 QTEST_APPLESS_MAIN(TestMaterial)

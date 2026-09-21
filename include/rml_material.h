@@ -8,6 +8,7 @@
 #include <rbl_version.h>
 
 #include "rml_material_property.h"
+#include "rml_material_evaluation.h"
 
 //! Material class
 class RMaterial
@@ -125,6 +126,12 @@ class RMaterial
 
         //! Check if material contains given list of properties.
         bool hasProperties(const QList<RMaterialProperty::Type> &propertyTypes) const;
+
+        //! Evaluate a property from coupled fields and committed history.
+        //! The built-in table behavior is side-effect free and returns the
+        //! committed state unchanged as the trial state.
+        RMaterialEvaluationResult evaluateProperty(RMaterialProperty::Type type,
+                                                   const RMaterialEvaluationContext &context) const;
 
         //! Generate material with all material properties and their default values.
         static RMaterial generateDefault();

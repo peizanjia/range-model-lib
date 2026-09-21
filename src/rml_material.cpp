@@ -184,6 +184,24 @@ bool RMaterial::hasProperties(const QList<RMaterialProperty::Type> &propertyType
     return true;
 }
 
+RMaterialEvaluationResult RMaterial::evaluateProperty(RMaterialProperty::Type type,
+                                                       const RMaterialEvaluationContext &context) const
+{
+    const uint position = this->findPosition(type);
+    if (position >= this->size())
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Material property '%s' is not available.",
+                     RMaterialProperty::getId(type).toUtf8().constData());
+    }
+
+    const RMaterialProperty &property = this->get(position);
+    const double key = context.getField(property.getKeyType());
+    return RMaterialEvaluationResult(property.get(key),
+                                     "builtin.table.v1",
+                                     context.getCommittedState());
+}
+
 RMaterial RMaterial::generateDefault()
 {
     RMaterial material;
