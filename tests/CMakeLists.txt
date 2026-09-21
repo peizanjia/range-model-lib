@@ -19,6 +19,7 @@ set(range_model_lib_tests
     tst_sparse_vector
     tst_sparse_matrix
     tst_material
+    tst_mesh_pipeline
     tst_problem_setup
     tst_surface
     tst_structural_product_profile
@@ -33,3 +34,13 @@ foreach(test_name IN LISTS range_model_lib_tests)
     )
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+if(RANGE_GMSH_RUNTIME)
+    foreach(test_name IN LISTS range_model_lib_tests)
+        add_custom_command(TARGET ${test_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${RANGE_GMSH_RUNTIME}"
+                    "$<TARGET_FILE_DIR:${test_name}>"
+            VERBATIM)
+    endforeach()
+endif()

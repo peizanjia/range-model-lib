@@ -35,7 +35,9 @@ qt_add_library(range-model-lib
         src/rml_material_property.cpp
         src/rml_matrix_solver_conf.cpp
         src/rml_mesh_generator.cpp
+        src/rml_gmsh_mesh_backend.cpp
         src/rml_mesh_input.cpp
+        src/rml_mesh_quality.cpp
         src/rml_mesh_setup.cpp
         src/rml_modal_setup.cpp
         src/rml_model.cpp
@@ -113,6 +115,7 @@ qt_add_library(range-model-lib
         include/rml_matrix_solver_conf.h
         include/rml_mesh_generator.h
         include/rml_mesh_input.h
+        include/rml_mesh_pipeline.h
         include/rml_mesh_setup.h
         include/rml_modal_setup.h
         include/rml_model.h
@@ -181,6 +184,28 @@ target_link_libraries(range-model-lib
         Qt6::Gui
         common_defines
 )
+
+# Optional mature 1D/2D/3D meshing backend. The public mesh contract remains
+# independent of Gmsh and the existing TetGen volume path remains available.
+set(RANGE_GMSH_ROOT "" CACHE PATH "Gmsh SDK root (contains include/gmsh.h and lib)")
+if(RANGE_GMSH_ROOT)
+    find_path(RANGE_GMSH_INCLUDE_DIR gmsh.h HINTS "${RANGE_GMSH_ROOT}/include" NO_DEFAULT_PATH REQUIRED)
+    if(WIN32)
+        find_library(RANGE_GMSH_LIBRARY NAMES gmsh.dll gmsh HINTS "${RANGE_GMSH_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+        find_file(RANGE_GMSH_RUNTIME NAMES gmsh-4.15.dll gmsh.dll HINTS "${RANGE_GMSH_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+    else()
+        find_library(RANGE_GMSH_LIBRARY NAMES gmsh HINTS "${RANGE_GMSH_ROOT}/lib" REQUIRED)
+    endif()
+    target_include_directories(range-model-lib PRIVATE "${RANGE_GMSH_INCLUDE_DIR}")
+    target_link_libraries(range-model-lib PUBLIC "${RANGE_GMSH_LIBRARY}")
+    target_compile_definitions(range-model-lib PUBLIC RANGE_HAVE_GMSH)
+    if(MSVC)
+        # Official Windows SDK binaries use MinGW; the generated C++ ABI is
+        # incompatible with MSVC. Gmsh ships a C-backed C++ wrapper expressly
+        # for this case.
+        target_compile_definitions(range-model-lib PRIVATE RANGE_GMSH_C_WRAPPER)
+    endif()
+endif()
 
 # Unit tests (opt-in via -DRANGE_BUILD_TESTS=ON)
 if(RANGE_BUILD_TESTS)
