@@ -51,7 +51,9 @@ const RBoundaryConditionDesc boundaryConditionDesc [] =
     { "bc-wall_frictionless", "Wall (frictionless)", false, true, true, true, true, false, false, R_PROBLEM_FLUID },
     { "bc-wave_displacement", "Wave displacement", false, true, true, true, true, true, false, R_PROBLEM_WAVE },
     { "bc-weight", "Weight", false, false, true, true, true, false, false, R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
-    { "bc-custom", "Custom", false, false, false, false, false, false, false, R_PROBLEM_NONE }
+    { "bc-custom", "Custom", false, false, false, false, false, false, false, R_PROBLEM_NONE },
+    { "bc-rotation", "Rotation", true, true, true, true, false, false, false, R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
+    { "bc-moment", "Moment", false, false, true, false, false, false, false, R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL }
 };
 
 
@@ -451,6 +453,16 @@ std::vector<RVariableType> RBoundaryCondition::getDefaultComponents
             componentTypes.push_back (R_VARIABLE_WEIGHT);
             break;
         case R_BOUNDARY_CONDITION_CUSTOM:
+            break;
+        case R_BOUNDARY_CONDITION_ROTATION:
+            componentTypes.push_back (R_VARIABLE_ROTATION_X);
+            componentTypes.push_back (R_VARIABLE_ROTATION_Y);
+            componentTypes.push_back (R_VARIABLE_ROTATION_Z);
+            break;
+        case R_BOUNDARY_CONDITION_MOMENT:
+            componentTypes.push_back (R_VARIABLE_MOMENT_X);
+            componentTypes.push_back (R_VARIABLE_MOMENT_Y);
+            componentTypes.push_back (R_VARIABLE_MOMENT_Z);
             break;
         default:
             break;

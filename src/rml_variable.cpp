@@ -131,7 +131,15 @@ const RVariableDesc variableDesc [R_VARIABLE_N_TYPES] =
     { "var-length"                       , "Length",                                    "m",          1.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
     { "var-area"                         , "Area",                                      "m^2",        1.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
     { "var-volume"                       , "Volume",                                    "m^3",        1.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
-    { "var-custom"                       , "Custom",                                    "N/A",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE }
+    { "var-custom"                       , "Custom",                                    "N/A",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-rotation"                     , "Rotation",                                  "rad",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
+    { "var-rotation_x"                   , "Rotation about X axis",                     "rad",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-rotation_y"                   , "Rotation about Y axis",                     "rad",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-rotation_z"                   , "Rotation about Z axis",                     "rad",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-moment"                       , "Moment",                                    "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
+    { "var-moment_x"                     , "Moment about X axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-moment_y"                     , "Moment about Y axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-moment_z"                     , "Moment about Z axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE }
 };
 
 

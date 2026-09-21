@@ -2,6 +2,7 @@
 #include <QJsonArray>
 
 #include "rml_capability_registry.h"
+#include "rml_boundary_condition.h"
 #include "rml_environment_condition.h"
 #include "rml_problem.h"
 #include "rml_structural_product_profile.h"
@@ -19,6 +20,7 @@ private slots:
     void rejectsUnsupportedAndMixedModels();
     void keepsTemperatureAsStructuralInput();
     void filtersStructuralProductFeatures();
+    void exposesFrameBoundaryContracts();
     void registryCoversProductDomains();
     void registryRoundTripsJson();
     void registryRejectsInvalidJson();
@@ -156,6 +158,41 @@ void TestStructuralProductProfile::filtersStructuralProductFeatures()
     QVERIFY(RStructuralProductProfile::isResultVariableEnabled(R_VARIABLE_STRESS));
     QVERIFY(!RStructuralProductProfile::isResultVariableEnabled(R_VARIABLE_ELECTRIC_FIELD));
     QVERIFY(!RStructuralProductProfile::isTimeSolverEnabled());
+}
+
+void TestStructuralProductProfile::exposesFrameBoundaryContracts()
+{
+    QCOMPARE(RBoundaryCondition::getId(R_BOUNDARY_CONDITION_ROTATION),QString("bc-rotation"));
+    QCOMPARE(RBoundaryCondition::getTypeFromId("bc-moment"),R_BOUNDARY_CONDITION_MOMENT);
+    QVERIFY(RBoundaryCondition::getExplicit(R_BOUNDARY_CONDITION_ROTATION));
+    QVERIFY(!RBoundaryCondition::getExplicit(R_BOUNDARY_CONDITION_MOMENT));
+    QVERIFY(RBoundaryCondition::getApplyOnPoint(R_BOUNDARY_CONDITION_ROTATION));
+    QVERIFY(RBoundaryCondition::getApplyOnLine(R_BOUNDARY_CONDITION_ROTATION));
+    QVERIFY(RBoundaryCondition::getApplyOnPoint(R_BOUNDARY_CONDITION_MOMENT));
+    QVERIFY(!RBoundaryCondition::getApplyOnLine(R_BOUNDARY_CONDITION_MOMENT));
+
+    const std::vector<RVariableType> rotation =
+        RBoundaryCondition::getDefaultComponents(R_BOUNDARY_CONDITION_ROTATION);
+    QCOMPARE(rotation.size(),std::size_t(3));
+    QCOMPARE(rotation[0],R_VARIABLE_ROTATION_X);
+    QCOMPARE(rotation[1],R_VARIABLE_ROTATION_Y);
+    QCOMPARE(rotation[2],R_VARIABLE_ROTATION_Z);
+
+    const std::vector<RVariableType> moment =
+        RBoundaryCondition::getDefaultComponents(R_BOUNDARY_CONDITION_MOMENT);
+    QCOMPARE(moment.size(),std::size_t(3));
+    QCOMPARE(moment[0],R_VARIABLE_MOMENT_X);
+    QCOMPARE(moment[1],R_VARIABLE_MOMENT_Y);
+    QCOMPARE(moment[2],R_VARIABLE_MOMENT_Z);
+    QCOMPARE(RVariable::getUnits(R_VARIABLE_ROTATION),QString("rad"));
+    QCOMPARE(RVariable::getUnits(R_VARIABLE_MOMENT),QString("N*m"));
+
+    QVERIFY(RStructuralProductProfile::isBoundaryConditionEnabled(
+        R_BOUNDARY_CONDITION_ROTATION));
+    QVERIFY(RStructuralProductProfile::isBoundaryConditionEnabled(
+        R_BOUNDARY_CONDITION_MOMENT));
+    QVERIFY(RStructuralProductProfile::isResultVariableEnabled(R_VARIABLE_ROTATION));
+    QVERIFY(RStructuralProductProfile::isResultVariableEnabled(R_VARIABLE_MOMENT));
 }
 
 void TestStructuralProductProfile::registryCoversProductDomains()
