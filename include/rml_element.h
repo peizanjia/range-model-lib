@@ -61,13 +61,13 @@ typedef enum _RElementType
     R_ELEMENT_NONE = 0,
     R_ELEMENT_POINT,
     R_ELEMENT_TRUSS1,
-    R_ELEMENT_TRUSS2, // Not implemented
-    R_ELEMENT_BEAM1, // Not implemented
-    R_ELEMENT_BEAM2, // Not implemented
+    R_ELEMENT_TRUSS2,
+    R_ELEMENT_BEAM1,
+    R_ELEMENT_BEAM2,
     R_ELEMENT_TRI1,
-    R_ELEMENT_TRI2, // Not implemented
+    R_ELEMENT_TRI2,
     R_ELEMENT_QUAD1,
-    R_ELEMENT_QUAD2, // Not implemented
+    R_ELEMENT_QUAD2,
     R_ELEMENT_TETRA1,
     R_ELEMENT_WEDGE1,
     R_ELEMENT_HEXA1,

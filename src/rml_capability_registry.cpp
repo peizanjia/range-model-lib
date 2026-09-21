@@ -68,9 +68,13 @@ bool structuralElement(RElementType type)
 {
     return type == R_ELEMENT_POINT ||
            type == R_ELEMENT_TRUSS1 ||
+           type == R_ELEMENT_TRUSS2 ||
            type == R_ELEMENT_BEAM1 ||
+           type == R_ELEMENT_BEAM2 ||
            type == R_ELEMENT_TRI1 ||
+           type == R_ELEMENT_TRI2 ||
            type == R_ELEMENT_QUAD1 ||
+           type == R_ELEMENT_QUAD2 ||
            type == R_ELEMENT_TETRA1 ||
            type == R_ELEMENT_WEDGE1 ||
            type == R_ELEMENT_HEXA1;
@@ -79,9 +83,13 @@ bool structuralElement(RElementType type)
 bool testedElement(RElementType type)
 {
     return type == R_ELEMENT_TRUSS1 ||
+           type == R_ELEMENT_TRUSS2 ||
            type == R_ELEMENT_BEAM1 ||
+           type == R_ELEMENT_BEAM2 ||
            type == R_ELEMENT_TRI1 ||
+           type == R_ELEMENT_TRI2 ||
            type == R_ELEMENT_QUAD1 ||
+           type == R_ELEMENT_QUAD2 ||
            type == R_ELEMENT_TETRA1 ||
            type == R_ELEMENT_WEDGE1 ||
            type == R_ELEMENT_HEXA1;

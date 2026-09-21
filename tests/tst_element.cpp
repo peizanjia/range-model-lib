@@ -16,6 +16,8 @@ private slots:
     void hasNodeId();
     void names();
     void localTransformationIsBlockDiagonal();
+    void quadraticShapeFunctions();
+    void quadraticTopologyUtilities();
 };
 
 void TestElement::nodeCountByType()
@@ -68,6 +70,76 @@ void TestElement::names()
 {
     QCOMPARE(RElement::getName(R_ELEMENT_POINT), QString("Point"));
     QCOMPARE(RElement::getName(R_ELEMENT_TRI1), QString("Triangle1"));
+}
+
+void TestElement::quadraticShapeFunctions()
+{
+    struct Expected { RElementType type; uint points; uint nodes; uint dimensions; double totalWeight; };
+    const Expected expected[] = {
+        {R_ELEMENT_TRUSS2,3,3,1,2.0},
+        {R_ELEMENT_TRI2,3,6,2,0.5},
+        {R_ELEMENT_QUAD2,9,9,2,4.0}
+    };
+    for (const Expected &item : expected)
+    {
+        QCOMPARE(RElement::getNIntegrationPoints(item.type),item.points);
+        double totalWeight = 0.0;
+        for (uint point=0;point<item.points;point++)
+        {
+            const RElementShapeFunction &shape = RElement::getShapeFunction(item.type,point);
+            QCOMPARE(shape.getN().size(),item.nodes);
+            QCOMPARE(shape.getDN().getNRows(),item.nodes);
+            QCOMPARE(shape.getDN().getNColumns(),item.dimensions);
+            double partition = 0.0;
+            for (uint node=0;node<item.nodes;node++) partition += shape.getN()[node];
+            QVERIFY(std::fabs(partition-1.0) < 1.0e-12);
+            for (uint dimension=0;dimension<item.dimensions;dimension++)
+            {
+                double derivativeSum = 0.0;
+                for (uint node=0;node<item.nodes;node++) derivativeSum += shape.getDN()[node][dimension];
+                QVERIFY(std::fabs(derivativeSum) < 1.0e-12);
+            }
+            totalWeight += shape.getW();
+        }
+        QVERIFY(std::fabs(totalWeight-item.totalWeight) < 1.0e-12);
+    }
+}
+
+void TestElement::quadraticTopologyUtilities()
+{
+    std::vector<RNode> triangleNodes = {
+        RNode(0.0,0.0,0.0),RNode(1.0,0.0,0.0),RNode(0.0,1.0,0.0),
+        RNode(0.5,0.0,0.0),RNode(0.5,0.5,0.0),RNode(0.0,0.5,0.0)
+    };
+    RElement triangle(R_ELEMENT_TRI2);
+    for (uint i=0;i<6;i++) triangle.setNodeId(i,i);
+    QCOMPARE(triangle.getNEdgeElements(),3u);
+    const std::vector<RElement> triangleEdges = triangle.generateEdgeElements();
+    QCOMPARE(triangleEdges.size(),std::size_t(3));
+    QCOMPARE(triangleEdges[0].getType(),R_ELEMENT_TRUSS2);
+    QCOMPARE(triangleEdges[0].getNodeId(2),3u);
+    QCOMPARE(triangle.triangulate(triangleNodes).size(),4);
+    QVERIFY(triangle.nodeIsOnEdge(3,0));
+    QVERIFY(!triangle.nodeIsOnEdge(3,1));
+    triangle.swapNormal();
+    QCOMPARE(triangle.getNodeId(4),5u);
+    QCOMPARE(triangle.getNodeId(5),4u);
+
+    std::vector<RNode> quadNodes = {
+        RNode(0.0,0.0,0.0),RNode(1.0,0.0,0.0),RNode(1.0,1.0,0.0),RNode(0.0,1.0,0.0),
+        RNode(0.5,0.0,0.0),RNode(1.0,0.5,0.0),RNode(0.5,1.0,0.0),RNode(0.0,0.5,0.0),
+        RNode(0.5,0.5,0.0)
+    };
+    RElement quad(R_ELEMENT_QUAD2);
+    for (uint i=0;i<9;i++) quad.setNodeId(i,i);
+    QCOMPARE(quad.getNEdgeElements(),4u);
+    QCOMPARE(quad.generateEdgeElements().size(),std::size_t(4));
+    QCOMPARE(quad.triangulate(quadNodes).size(),8);
+    QVERIFY(quad.nodeIsOnEdge(7,3));
+    QVERIFY(!quad.nodeIsOnEdge(8,0));
+    quad.swapNormal();
+    QCOMPARE(quad.getNodeId(4),7u);
+    QCOMPARE(quad.getNodeId(5),6u);
 }
 
 void TestElement::localTransformationIsBlockDiagonal()

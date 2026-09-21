@@ -49,7 +49,8 @@ void TestStructuralProductProfile::reportsElementCapabilityEvidence()
     QVERIFY(tetra.isEnabled());
     QVERIFY(!tetra.isAuxiliary());
 
-    for (RElementType type : {R_ELEMENT_TRI1,R_ELEMENT_QUAD1,
+    for (RElementType type : {R_ELEMENT_TRUSS2,R_ELEMENT_BEAM1,R_ELEMENT_BEAM2,
+                              R_ELEMENT_TRI1,R_ELEMENT_TRI2,R_ELEMENT_QUAD1,R_ELEMENT_QUAD2,
                               R_ELEMENT_WEDGE1,R_ELEMENT_HEXA1})
     {
         const RElementCapability solid =
@@ -67,13 +68,6 @@ void TestStructuralProductProfile::reportsElementCapabilityEvidence()
     QVERIFY(point.isEnabled());
     QVERIFY(point.isAuxiliary());
 
-    const RElementCapability beam =
-        RStructuralProductProfile::getElementCapability(R_ELEMENT_BEAM1);
-    QVERIFY(beam.isRegistered());
-    QVERIFY(beam.isFormulationImplemented());
-    QVERIFY(beam.isAutomatedTested());
-    QVERIFY(beam.isReferenceHostValidated());
-    QVERIFY(beam.isEnabled());
 }
 
 void TestStructuralProductProfile::separatesCapabilityEvidence()

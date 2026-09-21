@@ -359,11 +359,20 @@ bool RElement::swapNormal(void)
         this->getType() == R_ELEMENT_TRI2)
     {
         std::swap(this->nodeIDs[0],this->nodeIDs[1]);
+        if (this->getType() == R_ELEMENT_TRI2)
+        {
+            std::swap(this->nodeIDs[4],this->nodeIDs[5]);
+        }
     }
     else if (this->getType() == R_ELEMENT_QUAD1 ||
              this->getType() == R_ELEMENT_QUAD2)
     {
         std::swap(this->nodeIDs[1],this->nodeIDs[3]);
+        if (this->getType() == R_ELEMENT_QUAD2)
+        {
+            std::swap(this->nodeIDs[4],this->nodeIDs[7]);
+            std::swap(this->nodeIDs[5],this->nodeIDs[6]);
+        }
     }
 
     return true;
@@ -715,6 +724,9 @@ RInterpolatedElement RElement::createInterpolatedElement(const RPlane &plane, co
     switch (this->getType())
     {
         case R_ELEMENT_TRUSS1:
+        case R_ELEMENT_TRUSS2:
+        case R_ELEMENT_BEAM1:
+        case R_ELEMENT_BEAM2:
         {
             const RNode &node1 = nodes[this->getNodeId(0)];
             const RNode &node2 = nodes[this->getNodeId(1)];
@@ -731,6 +743,7 @@ RInterpolatedElement RElement::createInterpolatedElement(const RPlane &plane, co
             break;
         }
         case R_ELEMENT_TRI1:
+        case R_ELEMENT_TRI2:
         {
             const RNode &node1 = nodes[this->getNodeId(0)];
             const RNode &node2 = nodes[this->getNodeId(1)];
@@ -1443,7 +1456,6 @@ void RElement::triangulate(const std::vector<RNode> &nodes, QList<RTriangle> &tr
     switch (this->type)
     {
         case R_ELEMENT_TRI1:
-        case R_ELEMENT_TRI2:
         {
             RTriangle t1(RTriangle(nodes[this->nodeIDs[0]],nodes[this->nodeIDs[1]],nodes[this->nodeIDs[2]]));
             t1.setNodeIDs(this->nodeIDs[0],this->nodeIDs[1],this->nodeIDs[2]);
@@ -1451,8 +1463,21 @@ void RElement::triangulate(const std::vector<RNode> &nodes, QList<RTriangle> &tr
             triangles.push_back(t1);
             break;
         }
+        case R_ELEMENT_TRI2:
+        {
+            const uint connectivity[4][3] = {{0,3,5},{3,1,4},{5,4,2},{3,4,5}};
+            triangles.reserve(4);
+            for (const auto &nodes3 : connectivity)
+            {
+                RTriangle triangle(nodes[this->nodeIDs[nodes3[0]]],
+                                   nodes[this->nodeIDs[nodes3[1]]],
+                                   nodes[this->nodeIDs[nodes3[2]]]);
+                triangle.setNodeIDs(this->nodeIDs[nodes3[0]],this->nodeIDs[nodes3[1]],this->nodeIDs[nodes3[2]]);
+                triangles.push_back(triangle);
+            }
+            break;
+        }
         case R_ELEMENT_QUAD1:
-        case R_ELEMENT_QUAD2:
         {
             RTriangle t1(RTriangle(nodes[this->nodeIDs[0]],nodes[this->nodeIDs[1]],nodes[this->nodeIDs[2]]));
             RTriangle t2(RTriangle(nodes[this->nodeIDs[0]],nodes[this->nodeIDs[2]],nodes[this->nodeIDs[3]]));
@@ -1461,6 +1486,23 @@ void RElement::triangulate(const std::vector<RNode> &nodes, QList<RTriangle> &tr
             triangles.reserve(2);
             triangles.push_back(t1);
             triangles.push_back(t2);
+            break;
+        }
+        case R_ELEMENT_QUAD2:
+        {
+            const uint connectivity[8][3] = {
+                {0,4,8},{0,8,7},{4,1,5},{4,5,8},
+                {8,5,2},{8,2,6},{7,8,6},{7,6,3}
+            };
+            triangles.reserve(8);
+            for (const auto &nodes3 : connectivity)
+            {
+                RTriangle triangle(nodes[this->nodeIDs[nodes3[0]]],
+                                   nodes[this->nodeIDs[nodes3[1]]],
+                                   nodes[this->nodeIDs[nodes3[2]]]);
+                triangle.setNodeIDs(this->nodeIDs[nodes3[0]],this->nodeIDs[nodes3[1]],this->nodeIDs[nodes3[2]]);
+                triangles.push_back(triangle);
+            }
             break;
         }
         default:
@@ -1484,14 +1526,19 @@ uint RElement::getNEdgeElements(void) const
     switch (this->type)
     {
         case R_ELEMENT_TRUSS1:
+        case R_ELEMENT_TRUSS2:
+        case R_ELEMENT_BEAM1:
+        case R_ELEMENT_BEAM2:
         {
             return 2;
         }
         case R_ELEMENT_TRI1:
+        case R_ELEMENT_TRI2:
         {
             return 3;
         }
         case R_ELEMENT_QUAD1:
+        case R_ELEMENT_QUAD2:
         {
             return 4;
         }
@@ -1525,6 +1572,18 @@ std::vector<RElement> RElement::generateEdgeElements(void) const
 
             break;
         }
+        case R_ELEMENT_TRUSS2:
+        case R_ELEMENT_BEAM1:
+        case R_ELEMENT_BEAM2:
+        {
+            for (uint endpoint=0;endpoint<2;endpoint++)
+            {
+                RElement point(R_ELEMENT_POINT);
+                point.setNodeId(0,this->getNodeId(endpoint));
+                edgeElements.push_back(point);
+            }
+            break;
+        }
         case R_ELEMENT_TRI1:
         {
             RElement e1(R_ELEMENT_TRUSS1);
@@ -1542,6 +1601,17 @@ std::vector<RElement> RElement::generateEdgeElements(void) const
             e3.setNodeId(1,this->getNodeId(0));
             edgeElements.push_back(e3);
 
+            break;
+        }
+        case R_ELEMENT_TRI2:
+        {
+            const uint edges[3][3] = {{0,1,3},{1,2,4},{2,0,5}};
+            for (const auto &nodes3 : edges)
+            {
+                RElement edge(R_ELEMENT_TRUSS2);
+                for (uint node=0;node<3;node++) edge.setNodeId(node,this->getNodeId(nodes3[node]));
+                edgeElements.push_back(edge);
+            }
             break;
         }
         case R_ELEMENT_QUAD1:
@@ -1566,6 +1636,17 @@ std::vector<RElement> RElement::generateEdgeElements(void) const
             e4.setNodeId(1,this->getNodeId(0));
             edgeElements.push_back(e4);
 
+            break;
+        }
+        case R_ELEMENT_QUAD2:
+        {
+            const uint edges[4][3] = {{0,1,4},{1,2,5},{2,3,6},{3,0,7}};
+            for (const auto &nodes3 : edges)
+            {
+                RElement edge(R_ELEMENT_TRUSS2);
+                for (uint node=0;node<3;node++) edge.setNodeId(node,this->getNodeId(nodes3[node]));
+                edgeElements.push_back(edge);
+            }
             break;
         }
         case R_ELEMENT_TETRA1:
@@ -1665,7 +1746,9 @@ bool RElement::isNeighbor(const RElement &rElement) const
     }
     else if (R_ELEMENT_TYPE_IS_SURFACE(this->getType()))
     {
-        nNodesPerSide = 2;
+        const bool thisQuadratic = this->getType() == R_ELEMENT_TRI2 || this->getType() == R_ELEMENT_QUAD2;
+        const bool otherQuadratic = rElement.getType() == R_ELEMENT_TRI2 || rElement.getType() == R_ELEMENT_QUAD2;
+        nNodesPerSide = thisQuadratic && otherQuadratic ? 3u : 2u;
     }
     else if (R_ELEMENT_TYPE_IS_VOLUME(this->getType()))
     {
@@ -1759,6 +1842,9 @@ bool RElement::nodeIsOnEdge(uint nodePosition, uint edgePosition) const
     switch (this->type)
     {
         case R_ELEMENT_TRUSS1:
+        case R_ELEMENT_TRUSS2:
+        case R_ELEMENT_BEAM1:
+        case R_ELEMENT_BEAM2:
         {
             return ((nodePosition == 0 && edgePosition == 0)
                     ||
@@ -1772,6 +1858,14 @@ bool RElement::nodeIsOnEdge(uint nodePosition, uint edgePosition) const
                     ||
                     ((nodePosition == 2 || nodePosition == 0) && edgePosition == 2));
         }
+        case R_ELEMENT_TRI2:
+        {
+            return (((nodePosition == 0 || nodePosition == 1 || nodePosition == 3) && edgePosition == 0)
+                    ||
+                    ((nodePosition == 1 || nodePosition == 2 || nodePosition == 4) && edgePosition == 1)
+                    ||
+                    ((nodePosition == 2 || nodePosition == 0 || nodePosition == 5) && edgePosition == 2));
+        }
         case R_ELEMENT_QUAD1:
         {
             return (((nodePosition == 0 || nodePosition == 1) && edgePosition == 0)
@@ -1781,6 +1875,16 @@ bool RElement::nodeIsOnEdge(uint nodePosition, uint edgePosition) const
                     ((nodePosition == 2 || nodePosition == 3) && edgePosition == 2)
                     ||
                     ((nodePosition == 3 || nodePosition == 0) && edgePosition == 3));
+        }
+        case R_ELEMENT_QUAD2:
+        {
+            return (((nodePosition == 0 || nodePosition == 1 || nodePosition == 4) && edgePosition == 0)
+                    ||
+                    ((nodePosition == 1 || nodePosition == 2 || nodePosition == 5) && edgePosition == 1)
+                    ||
+                    ((nodePosition == 2 || nodePosition == 3 || nodePosition == 6) && edgePosition == 2)
+                    ||
+                    ((nodePosition == 3 || nodePosition == 0 || nodePosition == 7) && edgePosition == 3));
         }
         case R_ELEMENT_TETRA1:
         {
@@ -2284,7 +2388,24 @@ std::vector<RElementShapeFunction> RElement::generateShapeFunctionValues(RElemen
             shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0));
             break;
         case R_ELEMENT_TRUSS2:
+        {
+            N.resize(3);
+            dN.resize(3,1);
+            const double points[3] = {-std::sqrt(3.0/5.0),0.0,std::sqrt(3.0/5.0)};
+            const double weights[3] = {5.0/9.0,8.0/9.0,5.0/9.0};
+            for (uint point=0;point<3;point++)
+            {
+                ksi = points[point];
+                N[0] = 0.5*ksi*(ksi-1.0);
+                N[1] = 0.5*ksi*(ksi+1.0);
+                N[2] = 1.0-ksi*ksi;
+                dN[0][0] = ksi-0.5;
+                dN[1][0] = ksi+0.5;
+                dN[2][0] = -2.0*ksi;
+                shapeFunctions.push_back(RElementShapeFunction(N,dN,weights[point]));
+            }
             break;
+        }
         case R_ELEMENT_BEAM1:
             break;
         case R_ELEMENT_BEAM2:
@@ -2322,7 +2443,37 @@ std::vector<RElementShapeFunction> RElement::generateShapeFunctionValues(RElemen
             shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0/6.0));
             break;
         case R_ELEMENT_TRI2:
+        {
+            N.resize(6);
+            dN.resize(6,2);
+            const double points[3][2] = {
+                {1.0/6.0,1.0/6.0},
+                {2.0/3.0,1.0/6.0},
+                {1.0/6.0,2.0/3.0}
+            };
+            for (uint point=0;point<3;point++)
+            {
+                ksi = points[point][0];
+                eta = points[point][1];
+                const double l0 = 1.0-ksi-eta;
+                const double l1 = ksi;
+                const double l2 = eta;
+                N[0] = l0*(2.0*l0-1.0);
+                N[1] = l1*(2.0*l1-1.0);
+                N[2] = l2*(2.0*l2-1.0);
+                N[3] = 4.0*l0*l1;
+                N[4] = 4.0*l1*l2;
+                N[5] = 4.0*l2*l0;
+                dN[0][0] = 1.0-4.0*l0; dN[0][1] = 1.0-4.0*l0;
+                dN[1][0] = 4.0*l1-1.0; dN[1][1] = 0.0;
+                dN[2][0] = 0.0;          dN[2][1] = 4.0*l2-1.0;
+                dN[3][0] = 4.0*(l0-l1); dN[3][1] = -4.0*l1;
+                dN[4][0] = 4.0*l2;      dN[4][1] = 4.0*l1;
+                dN[5][0] = -4.0*l2;     dN[5][1] = 4.0*(l0-l2);
+                shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0/6.0));
+            }
             break;
+        }
         case R_ELEMENT_QUAD1:
             N.resize(4);
             dN.resize(4,2);
@@ -2392,7 +2543,39 @@ std::vector<RElementShapeFunction> RElement::generateShapeFunctionValues(RElemen
             shapeFunctions.push_back(RElementShapeFunction(N,dN,1.0));
             break;
         case R_ELEMENT_QUAD2:
+        {
+            N.resize(9);
+            dN.resize(9,2);
+            const double point = std::sqrt(3.0/5.0);
+            const double points[3] = {-point,0.0,point};
+            const double weights[3] = {5.0/9.0,8.0/9.0,5.0/9.0};
+            for (uint i=0;i<3;i++)
+            {
+                for (uint j=0;j<3;j++)
+                {
+                    ksi = points[i];
+                    eta = points[j];
+                    const double lk[3] = {0.5*ksi*(ksi-1.0),
+                                          0.5*ksi*(ksi+1.0),
+                                          1.0-ksi*ksi};
+                    const double le[3] = {0.5*eta*(eta-1.0),
+                                          0.5*eta*(eta+1.0),
+                                          1.0-eta*eta};
+                    const double dlk[3] = {ksi-0.5,ksi+0.5,-2.0*ksi};
+                    const double dle[3] = {eta-0.5,eta+0.5,-2.0*eta};
+                    const uint kIndex[9] = {0,1,1,0,2,1,2,0,2};
+                    const uint eIndex[9] = {0,0,1,1,0,2,1,2,2};
+                    for (uint node=0;node<9;node++)
+                    {
+                        N[node] = lk[kIndex[node]]*le[eIndex[node]];
+                        dN[node][0] = dlk[kIndex[node]]*le[eIndex[node]];
+                        dN[node][1] = lk[kIndex[node]]*dle[eIndex[node]];
+                    }
+                    shapeFunctions.push_back(RElementShapeFunction(N,dN,weights[i]*weights[j]));
+                }
+            }
             break;
+        }
         case R_ELEMENT_TETRA1:
             N.resize(4);
             dN.resize(4,3);
