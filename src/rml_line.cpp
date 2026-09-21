@@ -10,6 +10,9 @@ RLine::RLine ()
     , secondMomentY(0.0)
     , secondMomentZ(0.0)
     , torsionalConstant(0.0)
+    , sectionModulusY(0.0)
+    , sectionModulusZ(0.0)
+    , torsionalSectionModulus(0.0)
     , localYDirection(0.0,1.0,0.0)
 {
     this->name = RLine::defaultName;
@@ -36,6 +39,9 @@ void RLine::_init (const RLine *pLine)
         this->setSecondMomentY(pLine->getSecondMomentY());
         this->setSecondMomentZ(pLine->getSecondMomentZ());
         this->setTorsionalConstant(pLine->getTorsionalConstant());
+        this->setSectionModulusY(pLine->getSectionModulusY());
+        this->setSectionModulusZ(pLine->getSectionModulusZ());
+        this->setTorsionalSectionModulus(pLine->getTorsionalSectionModulus());
         this->setLocalYDirection(pLine->getLocalYDirection());
     }
 } /* RLine::_init */
@@ -98,6 +104,54 @@ void RLine::setTorsionalConstant(double torsionalConstant)
         throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Torsional constant J cannot be negative.");
     }
     this->torsionalConstant = torsionalConstant;
+}
+
+
+double RLine::getSectionModulusY() const
+{
+    return this->sectionModulusY;
+}
+
+
+void RLine::setSectionModulusY(double sectionModulusY)
+{
+    if (sectionModulusY < 0.0)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Section modulus Wy cannot be negative.");
+    }
+    this->sectionModulusY = sectionModulusY;
+}
+
+
+double RLine::getSectionModulusZ() const
+{
+    return this->sectionModulusZ;
+}
+
+
+void RLine::setSectionModulusZ(double sectionModulusZ)
+{
+    if (sectionModulusZ < 0.0)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Section modulus Wz cannot be negative.");
+    }
+    this->sectionModulusZ = sectionModulusZ;
+}
+
+
+double RLine::getTorsionalSectionModulus() const
+{
+    return this->torsionalSectionModulus;
+}
+
+
+void RLine::setTorsionalSectionModulus(double torsionalSectionModulus)
+{
+    if (torsionalSectionModulus < 0.0)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Torsional section modulus Wt cannot be negative.");
+    }
+    this->torsionalSectionModulus = torsionalSectionModulus;
 }
 
 

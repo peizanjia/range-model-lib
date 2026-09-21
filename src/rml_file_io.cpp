@@ -3336,6 +3336,12 @@ void RFileIO::readAscii(RFile &inFile, RLine &line)
         RFileIO::readAscii(inFile,line.torsionalConstant);
         RFileIO::readAscii(inFile,line.localYDirection);
     }
+    if (inFile.getVersion() > RVersion(1,3,3))
+    {
+        RFileIO::readAscii(inFile,line.sectionModulusY);
+        RFileIO::readAscii(inFile,line.sectionModulusZ);
+        RFileIO::readAscii(inFile,line.torsionalSectionModulus);
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RLine &line)
@@ -3348,6 +3354,12 @@ void RFileIO::readBinary(RFile &inFile, RLine &line)
         RFileIO::readBinary(inFile,line.secondMomentZ);
         RFileIO::readBinary(inFile,line.torsionalConstant);
         RFileIO::readBinary(inFile,line.localYDirection);
+    }
+    if (inFile.getVersion() > RVersion(1,3,3))
+    {
+        RFileIO::readBinary(inFile,line.sectionModulusY);
+        RFileIO::readBinary(inFile,line.sectionModulusZ);
+        RFileIO::readBinary(inFile,line.torsionalSectionModulus);
     }
 }
 
@@ -3366,7 +3378,13 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RLine &line, bool addNewLine)
     RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,line.torsionalConstant,false);
     RFileIO::writeAscii(outFile,' ',false);
-    RFileIO::writeAscii(outFile,line.localYDirection,addNewLine);
+    RFileIO::writeAscii(outFile,line.localYDirection,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.sectionModulusY,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.sectionModulusZ,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.torsionalSectionModulus,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RLine &line)
@@ -3377,6 +3395,9 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RLine &line)
     RFileIO::writeBinary(outFile,line.secondMomentZ);
     RFileIO::writeBinary(outFile,line.torsionalConstant);
     RFileIO::writeBinary(outFile,line.localYDirection);
+    RFileIO::writeBinary(outFile,line.sectionModulusY);
+    RFileIO::writeBinary(outFile,line.sectionModulusZ);
+    RFileIO::writeBinary(outFile,line.torsionalSectionModulus);
 }
 
 

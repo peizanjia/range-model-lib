@@ -70,11 +70,10 @@ void TestStructuralProductProfile::reportsElementCapabilityEvidence()
     const RElementCapability beam =
         RStructuralProductProfile::getElementCapability(R_ELEMENT_BEAM1);
     QVERIFY(beam.isRegistered());
-    QVERIFY(!beam.isFormulationImplemented());
-    QVERIFY(!beam.isAutomatedTested());
-    QVERIFY(!beam.isReferenceHostValidated());
-    QVERIFY(!beam.isEnabled());
-    QVERIFY(beam.getDiagnostic().contains("file compatibility"));
+    QVERIFY(beam.isFormulationImplemented());
+    QVERIFY(beam.isAutomatedTested());
+    QVERIFY(beam.isReferenceHostValidated());
+    QVERIFY(beam.isEnabled());
 }
 
 void TestStructuralProductProfile::separatesCapabilityEvidence()

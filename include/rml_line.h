@@ -32,6 +32,12 @@ class RLine : public RElementGroup
         double secondMomentZ;
         //! Saint-Venant torsional constant.
         double torsionalConstant;
+        //! Elastic section modulus about the section local Y axis.
+        double sectionModulusY;
+        //! Elastic section modulus about the section local Z axis.
+        double sectionModulusZ;
+        //! Torsional section modulus used for maximum Saint-Venant shear stress.
+        double torsionalSectionModulus;
         //! Preferred section local Y direction in global coordinates.
         RR3Vector localYDirection;
 
@@ -60,6 +66,15 @@ class RLine : public RElementGroup
 
         double getTorsionalConstant() const;
         void setTorsionalConstant(double torsionalConstant);
+
+        double getSectionModulusY() const;
+        void setSectionModulusY(double sectionModulusY);
+
+        double getSectionModulusZ() const;
+        void setSectionModulusZ(double sectionModulusZ);
+
+        double getTorsionalSectionModulus() const;
+        void setTorsionalSectionModulus(double torsionalSectionModulus);
 
         const RR3Vector &getLocalYDirection() const;
         void setLocalYDirection(const RR3Vector &localYDirection);
