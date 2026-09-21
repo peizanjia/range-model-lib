@@ -3329,12 +3329,26 @@ void RFileIO::readAscii(RFile &inFile, RLine &line)
 {
     RFileIO::readAscii(inFile,static_cast<RElementGroup&>(line));
     RFileIO::readAscii(inFile,line.crossArea);
+    if (inFile.getVersion() > RVersion(1,3,2))
+    {
+        RFileIO::readAscii(inFile,line.secondMomentY);
+        RFileIO::readAscii(inFile,line.secondMomentZ);
+        RFileIO::readAscii(inFile,line.torsionalConstant);
+        RFileIO::readAscii(inFile,line.localYDirection);
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RLine &line)
 {
     RFileIO::readBinary(inFile,static_cast<RElementGroup&>(line));
     RFileIO::readBinary(inFile,line.crossArea);
+    if (inFile.getVersion() > RVersion(1,3,2))
+    {
+        RFileIO::readBinary(inFile,line.secondMomentY);
+        RFileIO::readBinary(inFile,line.secondMomentZ);
+        RFileIO::readBinary(inFile,line.torsionalConstant);
+        RFileIO::readBinary(inFile,line.localYDirection);
+    }
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RLine &line, bool addNewLine)
@@ -3344,13 +3358,25 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RLine &line, bool addNewLine)
     {
         RFileIO::writeAscii(outFile,' ',false);
     }
-    RFileIO::writeAscii(outFile,line.crossArea,addNewLine);
+    RFileIO::writeAscii(outFile,line.crossArea,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.secondMomentY,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.secondMomentZ,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.torsionalConstant,false);
+    RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,line.localYDirection,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RLine &line)
 {
     RFileIO::writeBinary(outFile,static_cast<const RElementGroup&>(line));
     RFileIO::writeBinary(outFile,line.crossArea);
+    RFileIO::writeBinary(outFile,line.secondMomentY);
+    RFileIO::writeBinary(outFile,line.secondMomentZ);
+    RFileIO::writeBinary(outFile,line.torsionalConstant);
+    RFileIO::writeBinary(outFile,line.localYDirection);
 }
 
 

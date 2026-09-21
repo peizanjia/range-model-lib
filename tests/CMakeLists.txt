@@ -9,6 +9,7 @@ set(CMAKE_AUTOMOC ON)
 
 set(range_model_lib_tests
     tst_node
+    tst_line
     tst_element
     tst_element_descriptor
     tst_element_volume

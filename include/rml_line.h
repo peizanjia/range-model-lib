@@ -3,6 +3,8 @@
 
 #include <vector>
 
+#include <rbl_r3vector.h>
+
 #include "rml_element.h"
 #include "rml_element_group.h"
 
@@ -24,6 +26,14 @@ class RLine : public RElementGroup
 
         //! Line artificial cross area.
         double crossArea;
+        //! Second moment of area about the section local Y axis.
+        double secondMomentY;
+        //! Second moment of area about the section local Z axis.
+        double secondMomentZ;
+        //! Saint-Venant torsional constant.
+        double torsionalConstant;
+        //! Preferred section local Y direction in global coordinates.
+        RR3Vector localYDirection;
 
     public:
 
@@ -41,6 +51,18 @@ class RLine : public RElementGroup
 
         //! Set line group artificial cross area.
         void setCrossArea ( double cross_area );
+
+        double getSecondMomentY() const;
+        void setSecondMomentY(double secondMomentY);
+
+        double getSecondMomentZ() const;
+        void setSecondMomentZ(double secondMomentZ);
+
+        double getTorsionalConstant() const;
+        void setTorsionalConstant(double torsionalConstant);
+
+        const RR3Vector &getLocalYDirection() const;
+        void setLocalYDirection(const RR3Vector &localYDirection);
 
         //! Find line length.
         double findLength(const std::vector<RNode> &nodes, const std::vector<RElement> &elements) const;
