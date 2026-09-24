@@ -15,6 +15,8 @@ private slots:
     void rejectsInvalidMassMatrixType();
     void modelRoundTrip_data();
     void modelRoundTrip();
+    void resultVariableWithWhitespaceRoundTrip_data();
+    void resultVariableWithWhitespaceRoundTrip();
     void structuralCatalogAndCouplings();
     void structuralValidation();
     void dynamicsAndParallelValidation();
@@ -138,6 +140,45 @@ void TestProblemSetup::modelRoundTrip()
     QCOMPARE(restoredParallel.getMode(),RParallelExecutionMode::FixedThreads);
     QCOMPARE(restoredParallel.getRequestedThreads(),uint(4));
     QVERIFY(!restoredParallel.getDeterministicReduction());
+}
+
+void TestProblemSetup::resultVariableWithWhitespaceRoundTrip_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii") << false;
+    QTest::newRow("binary") << true;
+}
+
+void TestProblemSetup::resultVariableWithWhitespaceRoundTrip()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    RModel source;
+    RVariable stress(R_VARIABLE_STRESS_VON_MISES,R_VARIABLE_APPLY_ELEMENT);
+    stress.setUnits("Pa s");
+    stress.resize(1,0);
+    source.addVariable(stress);
+
+    const QString fileName = directory.filePath(
+        "result-variable." + RModel::getDefaultFileExtension(binary));
+    RModel restored;
+    try
+    {
+        QCOMPARE(source.write(fileName,false),fileName);
+        restored.read(fileName);
+    }
+    catch (const RError &error)
+    {
+        QFAIL(qPrintable(QString("Result variable round trip failed: %1")
+                         .arg(error.getMessage())));
+    }
+    QCOMPARE(restored.getNVariables(),1u);
+    QCOMPARE(restored.getVariable(0).getType(),R_VARIABLE_STRESS_VON_MISES);
+    QCOMPARE(restored.getVariable(0).getName(),QString("Von Mises stress"));
+    QCOMPARE(restored.getVariable(0).getUnits(),QString("Pa s"));
+    QCOMPARE(restored.getVariable(0).getNVectors(),1u);
 }
 
 void TestProblemSetup::dynamicsAndParallelValidation()

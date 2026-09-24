@@ -1999,12 +1999,14 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RVariable &variable, bool add
     {
         RFileIO::writeAscii(outFile,' ',false);
     }
-    RFileIO::writeAscii(outFile,variable.name,addNewLine);
+    // The ASCII string reader treats whitespace as a delimiter unless quoted.
+    // Result names such as "Von Mises stress" must remain a single field.
+    RFileIO::writeAscii(outFile,"\"" + variable.name + "\"",addNewLine);
     if (!addNewLine)
     {
         RFileIO::writeAscii(outFile,' ',false);
     }
-    RFileIO::writeAscii(outFile,variable.units,addNewLine);
+    RFileIO::writeAscii(outFile,"\"" + variable.units + "\"",addNewLine);
     if (!addNewLine)
     {
         RFileIO::writeAscii(outFile,' ',false);
