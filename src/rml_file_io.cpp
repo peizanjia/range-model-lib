@@ -4678,6 +4678,22 @@ void RFileIO::readAscii(RFile &inFile, RStructuralControlSetup &setup)
     result.deterministicSeed = seed.toULongLong(&ok,10);
     if (!ok || seed != QString::number(result.deterministicSeed))
         throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural control seed.");
+    if (inFile.getVersion() > RVersion(1,3,11))
+    {
+        uint count = 0;
+        RFileIO::readAscii(inFile,count);
+        if (count > 4096u)
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural control conditioning channel count (%u).",count);
+        result.channelConditioning.resize(count);
+        for (auto &channel : result.channelConditioning)
+        {
+            RFileIO::readAscii(inFile,channel.actuatorId);
+            RFileIO::readAscii(inFile,channel.delaySteps);
+            RFileIO::readAscii(inFile,channel.holdSteps);
+            RFileIO::readAscii(inFile,channel.noiseAmplitude);
+        }
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -4692,6 +4708,22 @@ void RFileIO::readBinary(RFile &inFile, RStructuralControlSetup &setup)
     RFileIO::readBinary(inFile,low);
     RFileIO::readBinary(inFile,high);
     result.deterministicSeed = (quint64(high) << 32) | low;
+    if (inFile.getVersion() > RVersion(1,3,11))
+    {
+        uint count = 0;
+        RFileIO::readBinary(inFile,count);
+        if (count > 4096u)
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural control conditioning channel count (%u).",count);
+        result.channelConditioning.resize(count);
+        for (auto &channel : result.channelConditioning)
+        {
+            RFileIO::readBinary(inFile,channel.actuatorId);
+            RFileIO::readBinary(inFile,channel.delaySteps);
+            RFileIO::readBinary(inFile,channel.holdSteps);
+            RFileIO::readBinary(inFile,channel.noiseAmplitude);
+        }
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -4699,13 +4731,32 @@ void RFileIO::readBinary(RFile &inFile, RStructuralControlSetup &setup)
 void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralControlSetup &setup, bool addNewLine)
 {
     setup.validate();
-    RFileIO::writeAscii(outFile,setup.enabled,addNewLine);
-    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
-    RFileIO::writeAscii(outFile,setup.controlProtocolVersion,addNewLine);
-    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
-    RFileIO::writeAscii(outFile,setup.controllerId,addNewLine);
-    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
-    RFileIO::writeAscii(outFile,QString::number(setup.deterministicSeed),addNewLine);
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+    write(setup.enabled);
+    write(setup.controlProtocolVersion);
+    write(setup.controllerId);
+    write(QString::number(setup.deterministicSeed));
+    write(uint(setup.channelConditioning.size()));
+    for (const auto &channel : setup.channelConditioning)
+    {
+        write(channel.actuatorId);
+        write(channel.delaySteps);
+        write(channel.holdSteps);
+        write(channel.noiseAmplitude);
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralControlSetup &setup)
@@ -4717,6 +4768,14 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralControlSetup &set
     // Canonical two-word low/high order avoids platform-dependent uint64 ABI.
     RFileIO::writeBinary(outFile,uint(setup.deterministicSeed & 0xffffffffu));
     RFileIO::writeBinary(outFile,uint(setup.deterministicSeed >> 32));
+    RFileIO::writeBinary(outFile,uint(setup.channelConditioning.size()));
+    for (const auto &channel : setup.channelConditioning)
+    {
+        RFileIO::writeBinary(outFile,channel.actuatorId);
+        RFileIO::writeBinary(outFile,channel.delaySteps);
+        RFileIO::writeBinary(outFile,channel.holdSteps);
+        RFileIO::writeBinary(outFile,channel.noiseAmplitude);
+    }
 }
 
 void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsSetup &setup)

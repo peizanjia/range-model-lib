@@ -46,6 +46,8 @@ private slots:
     void restartRoundTrip_data();
     void restartRoundTrip();
     void controlValidation();
+    void readsVersion1311WithoutConditioning_data();
+    void readsVersion1311WithoutConditioning();
     void readsVersion1310WithoutControlLedger_data();
     void readsVersion1310WithoutControlLedger();
     void readsVersion139WithoutSupportLedger_data();
@@ -311,7 +313,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.11"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.12"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;
@@ -579,6 +581,9 @@ void TestProblemSetup::restartRoundTrip()
     controlSetup.enabled = true;
     controlSetup.controllerId = QStringLiteral("controller.pid.v1");
     controlSetup.deterministicSeed = checkpoint.controlDeterministicSeed;
+    controlSetup.channelConditioning = {
+        {QStringLiteral("actuator.z"),2,3,0.12345678901234566},
+        {QStringLiteral("actuator.x"),0,1,0.0}};
     source.getProblemSetup().setStructuralControlSetup(controlSetup);
 
     const QString path = directory.filePath(binary ? "checkpoint.rbm" : "checkpoint.ram");
@@ -616,6 +621,18 @@ void TestProblemSetup::restartRoundTrip()
     QCOMPARE(restoredSetup.controlProtocolVersion,controlSetup.controlProtocolVersion);
     QCOMPARE(restoredSetup.controllerId,controlSetup.controllerId);
     QCOMPARE(restoredSetup.deterministicSeed,controlSetup.deterministicSeed);
+    QCOMPARE(restoredSetup.channelConditioning.size(),controlSetup.channelConditioning.size());
+    for (size_t i=0;i<controlSetup.channelConditioning.size();i++)
+    {
+        QCOMPARE(restoredSetup.channelConditioning[i].actuatorId,
+                 controlSetup.channelConditioning[i].actuatorId);
+        QCOMPARE(restoredSetup.channelConditioning[i].delaySteps,
+                 controlSetup.channelConditioning[i].delaySteps);
+        QCOMPARE(restoredSetup.channelConditioning[i].holdSteps,
+                 controlSetup.channelConditioning[i].holdSteps);
+        QCOMPARE(restoredSetup.channelConditioning[i].noiseAmplitude,
+                 controlSetup.channelConditioning[i].noiseAmplitude);
+    }
     QCOMPARE(readBack.systemFingerprint,checkpoint.systemFingerprint);
     QVERIFY(readBack.matches(restored,dofs));
 }
@@ -637,6 +654,30 @@ void TestProblemSetup::controlValidation()
     QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
     setup.controlProtocolVersion = 1;
     setup.controllerId = QStringLiteral("controller bad");
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.controllerId = QStringLiteral("controller.v1");
+    setup.channelConditioning = {{QStringLiteral("actuator"),1,2,0.1}};
+    setup.validate();
+    setup.channelConditioning[0].holdSteps = 0;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.channelConditioning[0].holdSteps = 2;
+    setup.channelConditioning[0].noiseAmplitude = std::numeric_limits<double>::infinity();
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.channelConditioning[0].noiseAmplitude = -0.1;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.channelConditioning[0].noiseAmplitude = 0.1;
+    setup.channelConditioning.push_back(setup.channelConditioning[0]);
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.channelConditioning[1].actuatorId = QStringLiteral("other");
+    setup.channelConditioning[0].delaySteps = 16384;
+    setup.channelConditioning[1].delaySteps = 1;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.channelConditioning.clear();
+    setup.enabled = false;
+    setup.controllerId.clear();
+    setup.deterministicSeed = 0;
+    setup.validate();
+    setup.channelConditioning = {{QStringLiteral("actuator"),0,1,0.0}};
     QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
 
     RStructuralDynamicsRestartData checkpoint;
@@ -673,6 +714,50 @@ void TestProblemSetup::controlValidation()
     checkpoint.validate();
     checkpoint.controlAvailable = false;
     QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+}
+
+void TestProblemSetup::readsVersion1311WithoutConditioning_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.11") << false;
+    QTest::newRow("binary-1.3.11") << true;
+}
+
+void TestProblemSetup::readsVersion1311WithoutConditioning()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "control-1311.bin" : "control-1311.txt");
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        auto write = [&](const auto &value)
+        {
+            if (binary) RFileIO::writeBinary(file,value);
+            else RFileIO::writeAscii(file,value);
+        };
+        write(true);
+        write(uint(1));
+        write(QStringLiteral("controller.old"));
+        if (binary)
+        {
+            write(uint(123)); // seed low word
+            write(uint(0));   // seed high word
+        }
+        else write(QStringLiteral("123"));
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,11));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RStructuralControlSetup restored;
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QVERIFY(restored.enabled);
+    QCOMPARE(restored.controllerId,QStringLiteral("controller.old"));
+    QCOMPARE(restored.deterministicSeed,quint64(123));
+    QVERIFY(restored.channelConditioning.empty());
 }
 
 void TestProblemSetup::readsVersion1310WithoutControlLedger_data()
