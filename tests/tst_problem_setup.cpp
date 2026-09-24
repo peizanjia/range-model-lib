@@ -23,6 +23,8 @@ private slots:
     void restartRejectsChangedMeshAndDofOrder();
     void readsVersion136WithoutCheckpoint_data();
     void readsVersion136WithoutCheckpoint();
+    void readsVersion137ButDisablesUnboundCheckpoint_data();
+    void readsVersion137ButDisablesUnboundCheckpoint();
     void angularKinematicsDescriptors();
     void rotationalInitialConditions();
 };
@@ -258,6 +260,7 @@ void TestProblemSetup::restartRoundTrip()
     checkpoint.physicalDofCount = uint(dofs.size());
     checkpoint.meshFingerprint = RStructuralDynamicsRestartData::computeMeshFingerprint(source);
     checkpoint.dofFingerprint = RStructuralDynamicsRestartData::computeDofFingerprint(dofs);
+    checkpoint.systemFingerprint = QString(64,QLatin1Char('a'));
     checkpoint.q = {0.12345678901234566};
     checkpoint.v = {-0.98765432101234567};
     checkpoint.a = {0.33333333333333331};
@@ -284,6 +287,7 @@ void TestProblemSetup::restartRoundTrip()
     QCOMPARE(readBack.cumulativeExternalWork,checkpoint.cumulativeExternalWork);
     QCOMPARE(readBack.cumulativeDampingDissipation,checkpoint.cumulativeDampingDissipation);
     QCOMPARE(readBack.initialMechanicalEnergy,checkpoint.initialMechanicalEnergy);
+    QCOMPARE(readBack.systemFingerprint,checkpoint.systemFingerprint);
     QVERIFY(readBack.matches(restored,dofs));
 }
 
@@ -299,6 +303,7 @@ void TestProblemSetup::restartRejectsChangedMeshAndDofOrder()
     checkpoint.physicalDofCount = uint(dofs.size());
     checkpoint.meshFingerprint = RStructuralDynamicsRestartData::computeMeshFingerprint(model);
     checkpoint.dofFingerprint = RStructuralDynamicsRestartData::computeDofFingerprint(dofs);
+    checkpoint.systemFingerprint = QString(64,QLatin1Char('b'));
     checkpoint.q = {0.0};
     checkpoint.v = {0.0};
     checkpoint.a = {0.0};
@@ -312,6 +317,84 @@ void TestProblemSetup::restartRejectsChangedMeshAndDofOrder()
     QVERIFY(!checkpoint.matches(model,dofs));
     checkpoint.q.push_back(1.0);
     QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+}
+
+void TestProblemSetup::readsVersion137ButDisablesUnboundCheckpoint_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.7") << false;
+    QTest::newRow("binary-1.3.7") << true;
+}
+
+void TestProblemSetup::readsVersion137ButDisablesUnboundCheckpoint()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "old-137.bin" : "old-137.txt");
+    RProblemSetup source;
+    source.getStructuralDynamicsSetup().setEnabled(true);
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        if (binary)
+        {
+            RFileIO::writeBinary(file,source.getRestart());
+            RFileIO::writeBinary(file,source.getRadiationSetup());
+            RFileIO::writeBinary(file,source.getModalSetup());
+            RFileIO::writeBinary(file,source.getMeshSetup());
+            RFileIO::writeBinary(file,source.getAcousticSetup());
+            RFileIO::writeBinary(file,int(source.getMassMatrixType()));
+            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+            RFileIO::writeBinary(file,source.getStructuralDynamicsSetup());
+            RFileIO::writeBinary(file,source.getParallelExecutionConfig());
+            RFileIO::writeBinary(file,true);
+            RFileIO::writeBinary(file,uint(2));
+            RFileIO::writeBinary(file,0.02);
+            RFileIO::writeBinary(file,0.01);
+            RFileIO::writeBinary(file,uint(2));
+            RFileIO::writeBinary(file,uint(1));
+            RFileIO::writeBinary(file,uint(2));
+            RFileIO::writeBinary(file,QString(64,QLatin1Char('a')));
+            RFileIO::writeBinary(file,QString(64,QLatin1Char('b')));
+            RFileIO::writeBinary(file,uint(1));
+            for (uint i=0;i<4;i++) RFileIO::writeBinary(file,0.0);
+            for (uint i=0;i<3;i++) RFileIO::writeBinary(file,0.0);
+        }
+        else
+        {
+            RFileIO::writeAscii(file,source.getRestart());
+            RFileIO::writeAscii(file,source.getRadiationSetup());
+            RFileIO::writeAscii(file,source.getModalSetup());
+            RFileIO::writeAscii(file,source.getMeshSetup());
+            RFileIO::writeAscii(file,source.getAcousticSetup());
+            RFileIO::writeAscii(file,int(source.getMassMatrixType()));
+            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+            RFileIO::writeAscii(file,source.getStructuralDynamicsSetup());
+            RFileIO::writeAscii(file,source.getParallelExecutionConfig());
+            RFileIO::writeAscii(file,true);
+            RFileIO::writeAscii(file,uint(2));
+            RFileIO::writeAscii(file,0.02);
+            RFileIO::writeAscii(file,0.01);
+            RFileIO::writeAscii(file,uint(2));
+            RFileIO::writeAscii(file,uint(1));
+            RFileIO::writeAscii(file,uint(2));
+            RFileIO::writeAscii(file,QString(64,QLatin1Char('a')));
+            RFileIO::writeAscii(file,QString(64,QLatin1Char('b')));
+            RFileIO::writeAscii(file,uint(1));
+            for (uint i=0;i<4;i++) RFileIO::writeAscii(file,0.0);
+            for (uint i=0;i<3;i++) RFileIO::writeAscii(file,0.0);
+        }
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,7));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RProblemSetup restored;
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QVERIFY(restored.getStructuralDynamicsSetup().getEnabled());
+    QVERIFY(!restored.getStructuralDynamicsRestartData().available);
 }
 
 void TestProblemSetup::readsVersion136WithoutCheckpoint_data()

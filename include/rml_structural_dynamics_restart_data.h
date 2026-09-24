@@ -24,6 +24,10 @@ struct RStructuralDynamicsRestartData
     uint physicalDofCount = 0;
     QString meshFingerprint;
     QString dofFingerprint;
+    //! Solver-owned fingerprint of scaled M/K and the physical-to-reduced map.
+    //! This prevents restoring reduced coordinates against changed operators,
+    //! prescribed values or local boundary frames with unchanged DOF counts.
+    QString systemFingerprint;
     std::vector<double> q;
     std::vector<double> v;
     std::vector<double> a;

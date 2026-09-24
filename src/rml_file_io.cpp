@@ -4785,6 +4785,10 @@ void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readAscii(inFile,result.physicalDofCount);
         RFileIO::readAscii(inFile,result.meshFingerprint);
         RFileIO::readAscii(inFile,result.dofFingerprint);
+        if (inFile.getVersion() > RVersion(1,3,7))
+        {
+            RFileIO::readAscii(inFile,result.systemFingerprint);
+        }
         uint stateSize = 0;
         RFileIO::readAscii(inFile,stateSize);
         if (stateSize == 0 || stateSize > 20000000u || stateSize > result.physicalDofCount)
@@ -4802,6 +4806,10 @@ void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readAscii(inFile,result.cumulativeExternalWork);
         RFileIO::readAscii(inFile,result.cumulativeDampingDissipation);
         RFileIO::readAscii(inFile,result.initialMechanicalEnergy);
+        // Version 1.3.7 did not bind reduced coordinates to the assembled
+        // operators.  Consume its state for file compatibility, but never
+        // allow that checkpoint to be used for a solver restart.
+        if (inFile.getVersion() <= RVersion(1,3,7)) result.clear();
     }
     result.validate();
     data = std::move(result);
@@ -4821,6 +4829,10 @@ void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readBinary(inFile,result.physicalDofCount);
         RFileIO::readBinary(inFile,result.meshFingerprint);
         RFileIO::readBinary(inFile,result.dofFingerprint);
+        if (inFile.getVersion() > RVersion(1,3,7))
+        {
+            RFileIO::readBinary(inFile,result.systemFingerprint);
+        }
         uint stateSize = 0;
         RFileIO::readBinary(inFile,stateSize);
         if (stateSize == 0 || stateSize > 20000000u || stateSize > result.physicalDofCount)
@@ -4838,6 +4850,7 @@ void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readBinary(inFile,result.cumulativeExternalWork);
         RFileIO::readBinary(inFile,result.cumulativeDampingDissipation);
         RFileIO::readBinary(inFile,result.initialMechanicalEnergy);
+        if (inFile.getVersion() <= RVersion(1,3,7)) result.clear();
     }
     result.validate();
     data = std::move(result);
@@ -4870,6 +4883,7 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsRestartDat
     write(data.physicalDofCount);
     write(data.meshFingerprint);
     write(data.dofFingerprint);
+    write(data.systemFingerprint);
     write(uint(data.q.size()));
     for (double value : data.q) write(value);
     for (double value : data.v) write(value);
@@ -4893,6 +4907,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartDa
     RFileIO::writeBinary(outFile,data.physicalDofCount);
     RFileIO::writeBinary(outFile,data.meshFingerprint);
     RFileIO::writeBinary(outFile,data.dofFingerprint);
+    RFileIO::writeBinary(outFile,data.systemFingerprint);
     RFileIO::writeBinary(outFile,uint(data.q.size()));
     for (double value : data.q) RFileIO::writeBinary(outFile,value);
     for (double value : data.v) RFileIO::writeBinary(outFile,value);

@@ -59,7 +59,8 @@ void RStructuralDynamicsRestartData::validate() const
     if (!std::isfinite(this->time) || !std::isfinite(this->fixedTimeStep) ||
         this->fixedTimeStep <= 0.0 || this->meshNodeCount == 0 ||
         this->meshElementCount == 0 || this->physicalDofCount == 0 ||
-        !isDigest(this->meshFingerprint) || !isDigest(this->dofFingerprint))
+        !isDigest(this->meshFingerprint) || !isDigest(this->dofFingerprint) ||
+        !isDigest(this->systemFingerprint))
     {
         throw RError(RError::Type::Application,R_ERROR_REF,
                      "Structural restart metadata is incomplete or invalid.");
