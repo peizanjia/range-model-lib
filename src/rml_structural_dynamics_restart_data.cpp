@@ -56,7 +56,17 @@ void RStructuralDynamicsRestartData::clear()
 
 void RStructuralDynamicsRestartData::validate() const
 {
-    if (!this->available) return;
+    if (!this->available)
+    {
+        if (this->controlAvailable || this->controlProtocolVersion != 1 ||
+            !this->controlFingerprint.isEmpty() || !this->controlChannelIds.empty() ||
+            !this->controlLastCommands.empty() || !this->controlPowers.empty() ||
+            !this->cumulativeControlWork.empty() || !this->controlControllerState.isEmpty() ||
+            this->controlDeterministicSeed != 0)
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Unavailable structural restart cannot retain control state.");
+        return;
+    }
     if (!std::isfinite(this->time) || !std::isfinite(this->fixedTimeStep) ||
         this->fixedTimeStep <= 0.0 || this->meshNodeCount == 0 ||
         this->meshElementCount == 0 || this->physicalDofCount == 0 ||

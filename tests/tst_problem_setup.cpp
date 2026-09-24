@@ -622,6 +622,10 @@ void TestProblemSetup::restartRoundTrip()
 
 void TestProblemSetup::controlValidation()
 {
+    RStructuralDynamicsRestartData unavailable;
+    unavailable.controlAvailable = true;
+    QVERIFY_EXCEPTION_THROWN(unavailable.validate(),RError);
+
     RStructuralControlSetup setup;
     setup.validate();
     setup.enabled = true;
