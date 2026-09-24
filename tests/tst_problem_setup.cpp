@@ -45,6 +45,8 @@ private slots:
     void readsLegacyProblemSetup();
     void restartRoundTrip_data();
     void restartRoundTrip();
+    void readsVersion139WithoutSupportLedger_data();
+    void readsVersion139WithoutSupportLedger();
     void restartRejectsChangedMeshAndDofOrder();
     void readsVersion136WithoutCheckpoint_data();
     void readsVersion136WithoutCheckpoint();
@@ -306,7 +308,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.9"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.10"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;
@@ -555,6 +557,11 @@ void TestProblemSetup::restartRoundTrip()
     checkpoint.cumulativeExternalWork = 0.12345678901234566;
     checkpoint.cumulativeDampingDissipation = 0.09876543210123456;
     checkpoint.initialMechanicalEnergy = 1.2345678901234567;
+    checkpoint.supportResponseAvailable = true;
+    checkpoint.supportFingerprint = QString(64,QLatin1Char('d'));
+    checkpoint.supportReactions = {-123.45678901234566};
+    checkpoint.supportPowers = {0.31415926535897931};
+    checkpoint.cumulativeSupportWork = {1.4142135623730951};
     checkpoint.validate();
     source.getProblemSetup().setStructuralDynamicsRestartData(checkpoint);
 
@@ -574,8 +581,63 @@ void TestProblemSetup::restartRoundTrip()
     QCOMPARE(readBack.cumulativeExternalWork,checkpoint.cumulativeExternalWork);
     QCOMPARE(readBack.cumulativeDampingDissipation,checkpoint.cumulativeDampingDissipation);
     QCOMPARE(readBack.initialMechanicalEnergy,checkpoint.initialMechanicalEnergy);
+    QCOMPARE(readBack.supportResponseAvailable,checkpoint.supportResponseAvailable);
+    QCOMPARE(readBack.supportFingerprint,checkpoint.supportFingerprint);
+    QCOMPARE(readBack.supportReactions,checkpoint.supportReactions);
+    QCOMPARE(readBack.supportPowers,checkpoint.supportPowers);
+    QCOMPARE(readBack.cumulativeSupportWork,checkpoint.cumulativeSupportWork);
     QCOMPARE(readBack.systemFingerprint,checkpoint.systemFingerprint);
     QVERIFY(readBack.matches(restored,dofs));
+}
+
+void TestProblemSetup::readsVersion139WithoutSupportLedger_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.9") << false;
+    QTest::newRow("binary-1.3.9") << true;
+}
+
+void TestProblemSetup::readsVersion139WithoutSupportLedger()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "checkpoint-139.bin" : "checkpoint-139.txt");
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        auto write = [&](const auto &value)
+        {
+            if (binary) RFileIO::writeBinary(file,value);
+            else RFileIO::writeAscii(file,value);
+        };
+        write(true);
+        write(uint(2));
+        write(0.02);
+        write(0.01);
+        write(uint(2));
+        write(uint(1));
+        write(uint(1));
+        write(QString(64,QLatin1Char('a')));
+        write(QString(64,QLatin1Char('b')));
+        write(QString(64,QLatin1Char('c')));
+        write(uint(1));
+        for (uint value=0;value<4;value++) write(double(value));
+        for (uint value=0;value<3;value++) write(double(value));
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,9));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RStructuralDynamicsRestartData restored;
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QVERIFY(restored.available);
+    QCOMPARE(restored.completedSteps,uint(2));
+    QVERIFY(!restored.supportResponseAvailable);
+    QVERIFY(restored.supportReactions.empty());
+    QVERIFY(restored.supportPowers.empty());
+    QVERIFY(restored.cumulativeSupportWork.empty());
 }
 
 void TestProblemSetup::restartRejectsChangedMeshAndDofOrder()

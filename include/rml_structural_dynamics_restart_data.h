@@ -35,6 +35,16 @@ struct RStructuralDynamicsRestartData
     double cumulativeExternalWork = 0.0;
     double cumulativeDampingDissipation = 0.0;
     double initialMechanicalEnergy = 0.0;
+    //! Optional accepted support-on-structure telemetry in physical units.
+    //! Order and constrained-row operators are bound by supportFingerprint,
+    //! independent of the core dynamic systemFingerprint.
+    //! Pre-1.3.10 checkpoints have no support ledger and may not resume a
+    //! support-response observer without explicitly starting a new run.
+    bool supportResponseAvailable = false;
+    QString supportFingerprint;
+    std::vector<double> supportReactions;
+    std::vector<double> supportPowers;
+    std::vector<double> cumulativeSupportWork;
 
     void clear();
     void validate() const;

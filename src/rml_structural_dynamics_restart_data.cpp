@@ -87,6 +87,27 @@ void RStructuralDynamicsRestartData::validate() const
         throw RError(RError::Type::Application,R_ERROR_REF,
                      "Structural restart state contains a non-finite value.");
     }
+    if (this->supportResponseAvailable)
+    {
+        if (!isDigest(this->supportFingerprint) ||
+            this->supportReactions.size() != this->supportPowers.size() ||
+            this->supportReactions.size() != this->cumulativeSupportWork.size() ||
+            this->supportReactions.size() > 3ull*this->meshNodeCount ||
+            !finiteVector(this->supportReactions) ||
+            !finiteVector(this->supportPowers) ||
+            !finiteVector(this->cumulativeSupportWork))
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural restart support-response ledger is incomplete or invalid.");
+        }
+    }
+    else if (!this->supportFingerprint.isEmpty() ||
+             !this->supportReactions.empty() || !this->supportPowers.empty() ||
+             !this->cumulativeSupportWork.empty())
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Structural restart has support-response values without a ledger.");
+    }
 }
 
 bool RStructuralDynamicsRestartData::matches(

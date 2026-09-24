@@ -4818,6 +4818,25 @@ void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readAscii(inFile,result.cumulativeExternalWork);
         RFileIO::readAscii(inFile,result.cumulativeDampingDissipation);
         RFileIO::readAscii(inFile,result.initialMechanicalEnergy);
+        if (inFile.getVersion() > RVersion(1,3,9))
+        {
+            RFileIO::readAscii(inFile,result.supportResponseAvailable);
+            if (result.supportResponseAvailable)
+            {
+                RFileIO::readAscii(inFile,result.supportFingerprint);
+                uint supportCount = 0;
+                RFileIO::readAscii(inFile,supportCount);
+                if (supportCount > 3ull*result.meshNodeCount || supportCount > 20000000u)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                                 "Invalid structural support-response count (%u).",supportCount);
+                result.supportReactions.resize(supportCount);
+                result.supportPowers.resize(supportCount);
+                result.cumulativeSupportWork.resize(supportCount);
+                for (double &value : result.supportReactions) RFileIO::readAscii(inFile,value);
+                for (double &value : result.supportPowers) RFileIO::readAscii(inFile,value);
+                for (double &value : result.cumulativeSupportWork) RFileIO::readAscii(inFile,value);
+            }
+        }
         // Version 1.3.7 did not bind reduced coordinates to the assembled
         // operators.  Consume its state for file compatibility, but never
         // allow that checkpoint to be used for a solver restart.
@@ -4862,6 +4881,25 @@ void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsRestartData &data)
         RFileIO::readBinary(inFile,result.cumulativeExternalWork);
         RFileIO::readBinary(inFile,result.cumulativeDampingDissipation);
         RFileIO::readBinary(inFile,result.initialMechanicalEnergy);
+        if (inFile.getVersion() > RVersion(1,3,9))
+        {
+            RFileIO::readBinary(inFile,result.supportResponseAvailable);
+            if (result.supportResponseAvailable)
+            {
+                RFileIO::readBinary(inFile,result.supportFingerprint);
+                uint supportCount = 0;
+                RFileIO::readBinary(inFile,supportCount);
+                if (supportCount > 3ull*result.meshNodeCount || supportCount > 20000000u)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                                 "Invalid structural support-response count (%u).",supportCount);
+                result.supportReactions.resize(supportCount);
+                result.supportPowers.resize(supportCount);
+                result.cumulativeSupportWork.resize(supportCount);
+                for (double &value : result.supportReactions) RFileIO::readBinary(inFile,value);
+                for (double &value : result.supportPowers) RFileIO::readBinary(inFile,value);
+                for (double &value : result.cumulativeSupportWork) RFileIO::readBinary(inFile,value);
+            }
+        }
         if (inFile.getVersion() <= RVersion(1,3,7)) result.clear();
     }
     result.validate();
@@ -4904,6 +4942,15 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsRestartDat
     write(data.cumulativeExternalWork);
     write(data.cumulativeDampingDissipation);
     write(data.initialMechanicalEnergy);
+    write(data.supportResponseAvailable);
+    if (data.supportResponseAvailable)
+    {
+        write(data.supportFingerprint);
+        write(uint(data.supportReactions.size()));
+        for (double value : data.supportReactions) write(value);
+        for (double value : data.supportPowers) write(value);
+        for (double value : data.cumulativeSupportWork) write(value);
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartData &data)
@@ -4928,6 +4975,15 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartDa
     RFileIO::writeBinary(outFile,data.cumulativeExternalWork);
     RFileIO::writeBinary(outFile,data.cumulativeDampingDissipation);
     RFileIO::writeBinary(outFile,data.initialMechanicalEnergy);
+    RFileIO::writeBinary(outFile,data.supportResponseAvailable);
+    if (data.supportResponseAvailable)
+    {
+        RFileIO::writeBinary(outFile,data.supportFingerprint);
+        RFileIO::writeBinary(outFile,uint(data.supportReactions.size()));
+        for (double value : data.supportReactions) RFileIO::writeBinary(outFile,value);
+        for (double value : data.supportPowers) RFileIO::writeBinary(outFile,value);
+        for (double value : data.cumulativeSupportWork) RFileIO::writeBinary(outFile,value);
+    }
 }
 
 void RFileIO::readAscii(RFile &inFile, RParallelExecutionConfig &config)
