@@ -14,6 +14,7 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->massMatrixType = pProblemSetup->massMatrixType;
         this->structuralInteractionSetup = pProblemSetup->structuralInteractionSetup;
         this->structuralDynamicsSetup = pProblemSetup->structuralDynamicsSetup;
+        this->structuralControlSetup = pProblemSetup->structuralControlSetup;
         this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
@@ -158,6 +159,22 @@ void RProblemSetup::setStructuralDynamicsSetup(const RStructuralDynamicsSetup &s
 {
     setup.validate();
     this->structuralDynamicsSetup = setup;
+}
+
+const RStructuralControlSetup &RProblemSetup::getStructuralControlSetup() const
+{
+    return this->structuralControlSetup;
+}
+
+RStructuralControlSetup &RProblemSetup::getStructuralControlSetup()
+{
+    return this->structuralControlSetup;
+}
+
+void RProblemSetup::setStructuralControlSetup(const RStructuralControlSetup &setup)
+{
+    setup.validate();
+    this->structuralControlSetup = setup;
 }
 
 const RStructuralDynamicsRestartData &RProblemSetup::getStructuralDynamicsRestartData() const

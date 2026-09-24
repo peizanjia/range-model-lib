@@ -1,4 +1,5 @@
 #include <cmath>
+#include <set>
 
 #include <QCryptographicHash>
 
@@ -107,6 +108,52 @@ void RStructuralDynamicsRestartData::validate() const
     {
         throw RError(RError::Type::Application,R_ERROR_REF,
                      "Structural restart has support-response values without a ledger.");
+    }
+    if (this->controlProtocolVersion != 1)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Unsupported structural restart control protocol version (%u).",
+                     this->controlProtocolVersion);
+    }
+    if (this->controlAvailable)
+    {
+        if (!isDigest(this->controlFingerprint) ||
+            this->controlChannelIds.empty() ||
+            this->controlChannelIds.size() > 4096u ||
+            this->controlChannelIds.size() > 3ull*this->meshNodeCount ||
+            this->controlLastCommands.size() != this->controlChannelIds.size() ||
+            this->controlPowers.size() != this->controlChannelIds.size() ||
+            this->cumulativeControlWork.size() != this->controlChannelIds.size() ||
+            this->controlControllerState.size() > 1048576 ||
+            !finiteVector(this->controlLastCommands) ||
+            !finiteVector(this->controlPowers) ||
+            !finiteVector(this->cumulativeControlWork))
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural restart control ledger is incomplete or invalid.");
+        }
+        std::set<QString> ids;
+        for (const QString &id : this->controlChannelIds)
+        {
+            if (id.isEmpty() || id.size() > 128 || id.trimmed() != id ||
+                !ids.insert(id).second)
+                throw RError(RError::Type::Application,R_ERROR_REF,
+                             "Structural restart control channel IDs must be unique, bounded and unpadded.");
+            for (const QChar character : id)
+            {
+                if (character.isSpace() || character.isNull() || character == QLatin1Char('"'))
+                    throw RError(RError::Type::Application,R_ERROR_REF,
+                                 "Structural restart control channel ID cannot contain whitespace, NUL or quotes.");
+            }
+        }
+    }
+    else if (!this->controlFingerprint.isEmpty() || !this->controlChannelIds.empty() ||
+             !this->controlLastCommands.empty() || !this->controlPowers.empty() ||
+             !this->cumulativeControlWork.empty() || !this->controlControllerState.isEmpty() ||
+             this->controlDeterministicSeed != 0)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Structural restart has control values without a control ledger.");
     }
 }
 

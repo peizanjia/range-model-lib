@@ -61,6 +61,7 @@ qt_add_library(range-model-lib
         src/rml_structural_product_profile.cpp
         src/rml_structural_interaction.cpp
         src/rml_structural_dynamics_setup.cpp
+        src/rml_structural_control_setup.cpp
         src/rml_structural_dynamics_restart_data.cpp
         src/rml_radiation_setup.cpp
         src/rml_results.cpp
@@ -144,6 +145,7 @@ qt_add_library(range-model-lib
         include/rml_structural_product_profile.h
         include/rml_structural_interaction.h
         include/rml_structural_dynamics_setup.h
+        include/rml_structural_control_setup.h
         include/rml_structural_dynamics_restart_data.h
         include/rml_radiation_setup.h
         include/rml_results.h
@@ -174,7 +176,7 @@ target_compile_definitions(range-model-lib
     PRIVATE
         FILE_MAJOR_VERSION=1
         FILE_MINOR_VERSION=3
-        FILE_RELEASE_VERSION=10
+        FILE_RELEASE_VERSION=11
         TETLIBRARY
 )
 

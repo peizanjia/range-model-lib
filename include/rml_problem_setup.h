@@ -7,6 +7,7 @@
 #include "rml_parallel_execution_config.h"
 #include "rml_radiation_setup.h"
 #include "rml_structural_dynamics_setup.h"
+#include "rml_structural_control_setup.h"
 #include "rml_structural_dynamics_restart_data.h"
 #include "rml_structural_interaction.h"
 
@@ -38,6 +39,8 @@ class RProblemSetup
         RStructuralInteractionSetup structuralInteractionSetup;
         //! Optional second-order structural transient setup.
         RStructuralDynamicsSetup structuralDynamicsSetup;
+        //! Versioned controller configuration; dynamic state is in restart data.
+        RStructuralControlSetup structuralControlSetup;
         //! Last accepted second-order transient state for disk restart.
         RStructuralDynamicsRestartData structuralDynamicsRestartData;
         //! Solver execution policy.
@@ -117,6 +120,10 @@ class RProblemSetup
         const RStructuralDynamicsSetup &getStructuralDynamicsSetup() const;
         RStructuralDynamicsSetup &getStructuralDynamicsSetup();
         void setStructuralDynamicsSetup(const RStructuralDynamicsSetup &setup);
+
+        const RStructuralControlSetup &getStructuralControlSetup() const;
+        RStructuralControlSetup &getStructuralControlSetup();
+        void setStructuralControlSetup(const RStructuralControlSetup &setup);
 
         const RStructuralDynamicsRestartData &getStructuralDynamicsRestartData() const;
         RStructuralDynamicsRestartData &getStructuralDynamicsRestartData();

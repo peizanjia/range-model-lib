@@ -2,6 +2,7 @@
 #define RML_STRUCTURAL_DYNAMICS_RESTART_DATA_H
 
 #include <QString>
+#include <QByteArray>
 #include <vector>
 
 #include "rml_structural_interaction.h"
@@ -45,6 +46,19 @@ struct RStructuralDynamicsRestartData
     std::vector<double> supportReactions;
     std::vector<double> supportPowers;
     std::vector<double> cumulativeSupportWork;
+    //! Optional Stage-6 controller ledger. Channel IDs refer to the ordered
+    //! structural actuator catalog; commands are scalar newtons, endpoint
+    //! powers watts, and accumulated work joules. The solver binds its
+    //! actuator-to-reduced-force map and controller ID in controlFingerprint.
+    bool controlAvailable = false;
+    uint controlProtocolVersion = 1;
+    QString controlFingerprint;
+    std::vector<QString> controlChannelIds;
+    std::vector<double> controlLastCommands;
+    std::vector<double> controlPowers;
+    std::vector<double> cumulativeControlWork;
+    QByteArray controlControllerState;
+    quint64 controlDeterministicSeed = 0;
 
     void clear();
     void validate() const;

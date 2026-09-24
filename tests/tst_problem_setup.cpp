@@ -45,6 +45,9 @@ private slots:
     void readsLegacyProblemSetup();
     void restartRoundTrip_data();
     void restartRoundTrip();
+    void controlValidation();
+    void readsVersion1310WithoutControlLedger_data();
+    void readsVersion1310WithoutControlLedger();
     void readsVersion139WithoutSupportLedger_data();
     void readsVersion139WithoutSupportLedger();
     void restartRejectsChangedMeshAndDofOrder();
@@ -308,7 +311,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.10"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.11"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;
@@ -562,8 +565,21 @@ void TestProblemSetup::restartRoundTrip()
     checkpoint.supportReactions = {-123.45678901234566};
     checkpoint.supportPowers = {0.31415926535897931};
     checkpoint.cumulativeSupportWork = {1.4142135623730951};
+    checkpoint.controlAvailable = true;
+    checkpoint.controlFingerprint = QString(64,QLatin1Char('e'));
+    checkpoint.controlChannelIds = {QStringLiteral("actuator.z"),QStringLiteral("actuator.x")};
+    checkpoint.controlLastCommands = {1.2345678901234567,-2.3456789012345678};
+    checkpoint.controlPowers = {0.22345678901234567,-0.4456789012345678};
+    checkpoint.cumulativeControlWork = {0.012345678901234567,-0.023456789012345678};
+    checkpoint.controlControllerState = QByteArray::fromHex("0001feff");
+    checkpoint.controlDeterministicSeed = quint64(18446744073709551615ull);
     checkpoint.validate();
     source.getProblemSetup().setStructuralDynamicsRestartData(checkpoint);
+    RStructuralControlSetup controlSetup;
+    controlSetup.enabled = true;
+    controlSetup.controllerId = QStringLiteral("controller.pid.v1");
+    controlSetup.deterministicSeed = checkpoint.controlDeterministicSeed;
+    source.getProblemSetup().setStructuralControlSetup(controlSetup);
 
     const QString path = directory.filePath(binary ? "checkpoint.rbm" : "checkpoint.ram");
     RModel restored;
@@ -586,8 +602,122 @@ void TestProblemSetup::restartRoundTrip()
     QCOMPARE(readBack.supportReactions,checkpoint.supportReactions);
     QCOMPARE(readBack.supportPowers,checkpoint.supportPowers);
     QCOMPARE(readBack.cumulativeSupportWork,checkpoint.cumulativeSupportWork);
+    QCOMPARE(readBack.controlAvailable,checkpoint.controlAvailable);
+    QCOMPARE(readBack.controlProtocolVersion,checkpoint.controlProtocolVersion);
+    QCOMPARE(readBack.controlFingerprint,checkpoint.controlFingerprint);
+    QCOMPARE(readBack.controlChannelIds,checkpoint.controlChannelIds);
+    QCOMPARE(readBack.controlLastCommands,checkpoint.controlLastCommands);
+    QCOMPARE(readBack.controlPowers,checkpoint.controlPowers);
+    QCOMPARE(readBack.cumulativeControlWork,checkpoint.cumulativeControlWork);
+    QCOMPARE(readBack.controlControllerState,checkpoint.controlControllerState);
+    QCOMPARE(readBack.controlDeterministicSeed,checkpoint.controlDeterministicSeed);
+    const auto &restoredSetup = restored.getProblemSetup().getStructuralControlSetup();
+    QCOMPARE(restoredSetup.enabled,controlSetup.enabled);
+    QCOMPARE(restoredSetup.controlProtocolVersion,controlSetup.controlProtocolVersion);
+    QCOMPARE(restoredSetup.controllerId,controlSetup.controllerId);
+    QCOMPARE(restoredSetup.deterministicSeed,controlSetup.deterministicSeed);
     QCOMPARE(readBack.systemFingerprint,checkpoint.systemFingerprint);
     QVERIFY(readBack.matches(restored,dofs));
+}
+
+void TestProblemSetup::controlValidation()
+{
+    RStructuralControlSetup setup;
+    setup.validate();
+    setup.enabled = true;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.controllerId = QStringLiteral("controller.v1");
+    setup.deterministicSeed = 19;
+    setup.validate();
+    setup.controlProtocolVersion = 2;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+    setup.controlProtocolVersion = 1;
+    setup.controllerId = QStringLiteral("controller bad");
+    QVERIFY_EXCEPTION_THROWN(setup.validate(),RError);
+
+    RStructuralDynamicsRestartData checkpoint;
+    checkpoint.available = true;
+    checkpoint.fixedTimeStep = 0.01;
+    checkpoint.meshNodeCount = 2;
+    checkpoint.meshElementCount = 1;
+    checkpoint.physicalDofCount = 1;
+    checkpoint.meshFingerprint = QString(64,QLatin1Char('a'));
+    checkpoint.dofFingerprint = QString(64,QLatin1Char('b'));
+    checkpoint.systemFingerprint = QString(64,QLatin1Char('c'));
+    checkpoint.q = checkpoint.v = checkpoint.a = checkpoint.externalForce = {0.0};
+    checkpoint.validate();
+    checkpoint.controlAvailable = true;
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+    checkpoint.controlFingerprint = QString(64,QLatin1Char('d'));
+    checkpoint.controlChannelIds = {QStringLiteral("actuator.1"),QStringLiteral("actuator.2")};
+    checkpoint.controlLastCommands = {0.0,0.0};
+    checkpoint.controlPowers = {0.0,0.0};
+    checkpoint.cumulativeControlWork = {0.0,0.0};
+    checkpoint.validate();
+    checkpoint.controlChannelIds[1] = checkpoint.controlChannelIds[0];
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+    checkpoint.controlChannelIds[1] = QStringLiteral("actuator.2");
+    checkpoint.controlPowers[1] = std::numeric_limits<double>::infinity();
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+    checkpoint.controlPowers[1] = 0.0;
+    checkpoint.controlControllerState = QByteArray(1048577,'x');
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+    checkpoint.controlControllerState.clear();
+    checkpoint.controlProtocolVersion = 2;
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+    checkpoint.controlProtocolVersion = 1;
+    checkpoint.validate();
+    checkpoint.controlAvailable = false;
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+}
+
+void TestProblemSetup::readsVersion1310WithoutControlLedger_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.10") << false;
+    QTest::newRow("binary-1.3.10") << true;
+}
+
+void TestProblemSetup::readsVersion1310WithoutControlLedger()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "checkpoint-1310.bin" : "checkpoint-1310.txt");
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        auto write = [&](const auto &value)
+        {
+            if (binary) RFileIO::writeBinary(file,value);
+            else RFileIO::writeAscii(file,value);
+        };
+        write(true);
+        write(uint(2));
+        write(0.02);
+        write(0.01);
+        write(uint(2));
+        write(uint(1));
+        write(uint(1));
+        write(QString(64,QLatin1Char('a')));
+        write(QString(64,QLatin1Char('b')));
+        write(QString(64,QLatin1Char('c')));
+        write(uint(1));
+        for (uint value=0;value<4;value++) write(double(value));
+        for (uint value=0;value<3;value++) write(double(value));
+        write(false); // 1.3.10 support-response ledger flag is the last field.
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,10));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RStructuralDynamicsRestartData restored;
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QVERIFY(restored.available);
+    QVERIFY(!restored.controlAvailable);
+    QVERIFY(restored.controlChannelIds.empty());
+    QCOMPARE(restored.controlProtocolVersion,uint(1));
 }
 
 void TestProblemSetup::readsVersion139WithoutSupportLedger_data()

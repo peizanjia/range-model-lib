@@ -4541,6 +4541,10 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
     {
         problemSetup.structuralDynamicsRestartData.clear();
     }
+    if (inFile.getVersion() > RVersion(1,3,10))
+        RFileIO::readAscii(inFile,problemSetup.structuralControlSetup);
+    else
+        problemSetup.structuralControlSetup = RStructuralControlSetup();
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4584,6 +4588,10 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
     {
         problemSetup.structuralDynamicsRestartData.clear();
     }
+    if (inFile.getVersion() > RVersion(1,3,10))
+        RFileIO::readBinary(inFile,problemSetup.structuralControlSetup);
+    else
+        problemSetup.structuralControlSetup = RStructuralControlSetup();
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
@@ -4634,6 +4642,8 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,problemSetup.structuralDynamicsRestartData,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralControlSetup,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4648,12 +4658,66 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsSetup);
     RFileIO::writeBinary(outFile,problemSetup.parallelExecutionConfig);
     RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsRestartData);
+    RFileIO::writeBinary(outFile,problemSetup.structuralControlSetup);
 }
 
 
 /*********************************************************************
- *  Stage 5 transient dynamics and parallel execution               *
+ *  Stage 5/6 transient dynamics and control configuration           *
  *********************************************************************/
+
+void RFileIO::readAscii(RFile &inFile, RStructuralControlSetup &setup)
+{
+    RStructuralControlSetup result;
+    RFileIO::readAscii(inFile,result.enabled);
+    RFileIO::readAscii(inFile,result.controlProtocolVersion);
+    RFileIO::readAscii(inFile,result.controllerId);
+    QString seed;
+    RFileIO::readAscii(inFile,seed);
+    bool ok = false;
+    result.deterministicSeed = seed.toULongLong(&ok,10);
+    if (!ok || seed != QString::number(result.deterministicSeed))
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural control seed.");
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralControlSetup &setup)
+{
+    RStructuralControlSetup result;
+    RFileIO::readBinary(inFile,result.enabled);
+    RFileIO::readBinary(inFile,result.controlProtocolVersion);
+    RFileIO::readBinary(inFile,result.controllerId);
+    uint low = 0, high = 0;
+    RFileIO::readBinary(inFile,low);
+    RFileIO::readBinary(inFile,high);
+    result.deterministicSeed = (quint64(high) << 32) | low;
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralControlSetup &setup, bool addNewLine)
+{
+    setup.validate();
+    RFileIO::writeAscii(outFile,setup.enabled,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,setup.controlProtocolVersion,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,setup.controllerId,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,QString::number(setup.deterministicSeed),addNewLine);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralControlSetup &setup)
+{
+    setup.validate();
+    RFileIO::writeBinary(outFile,setup.enabled);
+    RFileIO::writeBinary(outFile,setup.controlProtocolVersion);
+    RFileIO::writeBinary(outFile,setup.controllerId);
+    // Canonical two-word low/high order avoids platform-dependent uint64 ABI.
+    RFileIO::writeBinary(outFile,uint(setup.deterministicSeed & 0xffffffffu));
+    RFileIO::writeBinary(outFile,uint(setup.deterministicSeed >> 32));
+}
 
 void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsSetup &setup)
 {
@@ -4837,6 +4901,39 @@ void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsRestartData &data)
                 for (double &value : result.cumulativeSupportWork) RFileIO::readAscii(inFile,value);
             }
         }
+        if (inFile.getVersion() > RVersion(1,3,10))
+        {
+            RFileIO::readAscii(inFile,result.controlAvailable);
+            if (result.controlAvailable)
+            {
+                RFileIO::readAscii(inFile,result.controlProtocolVersion);
+                RFileIO::readAscii(inFile,result.controlFingerprint);
+                uint count = 0;
+                RFileIO::readAscii(inFile,count);
+                if (count == 0 || count > 4096u || count > 3ull*result.meshNodeCount)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                                 "Invalid structural control channel count (%u).",count);
+                result.controlChannelIds.resize(count);
+                result.controlLastCommands.resize(count);
+                result.controlPowers.resize(count);
+                result.cumulativeControlWork.resize(count);
+                for (QString &value : result.controlChannelIds) RFileIO::readAscii(inFile,value);
+                for (double &value : result.controlLastCommands) RFileIO::readAscii(inFile,value);
+                for (double &value : result.controlPowers) RFileIO::readAscii(inFile,value);
+                for (double &value : result.cumulativeControlWork) RFileIO::readAscii(inFile,value);
+                QString encodedState, seed;
+                RFileIO::readAscii(inFile,encodedState);
+                RFileIO::readAscii(inFile,seed);
+                if (encodedState.size() > 1398104)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,"Structural controller state exceeds 1 MiB.");
+                result.controlControllerState = QByteArray::fromBase64(encodedState.toLatin1());
+                bool ok = false;
+                result.controlDeterministicSeed = seed.toULongLong(&ok,10);
+                if (QString::fromLatin1(result.controlControllerState.toBase64()) != encodedState ||
+                    !ok || seed != QString::number(result.controlDeterministicSeed))
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural control state or seed encoding.");
+            }
+        }
         // Version 1.3.7 did not bind reduced coordinates to the assembled
         // operators.  Consume its state for file compatibility, but never
         // allow that checkpoint to be used for a solver restart.
@@ -4900,6 +4997,39 @@ void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsRestartData &data)
                 for (double &value : result.cumulativeSupportWork) RFileIO::readBinary(inFile,value);
             }
         }
+        if (inFile.getVersion() > RVersion(1,3,10))
+        {
+            RFileIO::readBinary(inFile,result.controlAvailable);
+            if (result.controlAvailable)
+            {
+                RFileIO::readBinary(inFile,result.controlProtocolVersion);
+                RFileIO::readBinary(inFile,result.controlFingerprint);
+                uint count = 0;
+                RFileIO::readBinary(inFile,count);
+                if (count == 0 || count > 4096u || count > 3ull*result.meshNodeCount)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                                 "Invalid structural control channel count (%u).",count);
+                result.controlChannelIds.resize(count);
+                result.controlLastCommands.resize(count);
+                result.controlPowers.resize(count);
+                result.cumulativeControlWork.resize(count);
+                for (QString &value : result.controlChannelIds) RFileIO::readBinary(inFile,value);
+                for (double &value : result.controlLastCommands) RFileIO::readBinary(inFile,value);
+                for (double &value : result.controlPowers) RFileIO::readBinary(inFile,value);
+                for (double &value : result.cumulativeControlWork) RFileIO::readBinary(inFile,value);
+                QString encodedState;
+                RFileIO::readBinary(inFile,encodedState);
+                if (encodedState.size() > 1398104)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,"Structural controller state exceeds 1 MiB.");
+                result.controlControllerState = QByteArray::fromBase64(encodedState.toLatin1());
+                if (QString::fromLatin1(result.controlControllerState.toBase64()) != encodedState)
+                    throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural controller state encoding.");
+                uint low = 0, high = 0;
+                RFileIO::readBinary(inFile,low);
+                RFileIO::readBinary(inFile,high);
+                result.controlDeterministicSeed = (quint64(high) << 32) | low;
+            }
+        }
         if (inFile.getVersion() <= RVersion(1,3,7)) result.clear();
     }
     result.validate();
@@ -4951,6 +5081,19 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsRestartDat
         for (double value : data.supportPowers) write(value);
         for (double value : data.cumulativeSupportWork) write(value);
     }
+    write(data.controlAvailable);
+    if (data.controlAvailable)
+    {
+        write(data.controlProtocolVersion);
+        write(data.controlFingerprint);
+        write(uint(data.controlChannelIds.size()));
+        for (const QString &value : data.controlChannelIds) write(value);
+        for (double value : data.controlLastCommands) write(value);
+        for (double value : data.controlPowers) write(value);
+        for (double value : data.cumulativeControlWork) write(value);
+        write(QString::fromLatin1(data.controlControllerState.toBase64()));
+        write(QString::number(data.controlDeterministicSeed));
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartData &data)
@@ -4983,6 +5126,20 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartDa
         for (double value : data.supportReactions) RFileIO::writeBinary(outFile,value);
         for (double value : data.supportPowers) RFileIO::writeBinary(outFile,value);
         for (double value : data.cumulativeSupportWork) RFileIO::writeBinary(outFile,value);
+    }
+    RFileIO::writeBinary(outFile,data.controlAvailable);
+    if (data.controlAvailable)
+    {
+        RFileIO::writeBinary(outFile,data.controlProtocolVersion);
+        RFileIO::writeBinary(outFile,data.controlFingerprint);
+        RFileIO::writeBinary(outFile,uint(data.controlChannelIds.size()));
+        for (const QString &value : data.controlChannelIds) RFileIO::writeBinary(outFile,value);
+        for (double value : data.controlLastCommands) RFileIO::writeBinary(outFile,value);
+        for (double value : data.controlPowers) RFileIO::writeBinary(outFile,value);
+        for (double value : data.cumulativeControlWork) RFileIO::writeBinary(outFile,value);
+        RFileIO::writeBinary(outFile,QString::fromLatin1(data.controlControllerState.toBase64()));
+        RFileIO::writeBinary(outFile,uint(data.controlDeterministicSeed & 0xffffffffu));
+        RFileIO::writeBinary(outFile,uint(data.controlDeterministicSeed >> 32));
     }
 }
 
