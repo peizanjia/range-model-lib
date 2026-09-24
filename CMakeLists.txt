@@ -40,6 +40,7 @@ qt_add_library(range-model-lib
         src/rml_mesh_quality.cpp
         src/rml_mesh_setup.cpp
         src/rml_modal_setup.cpp
+        src/rml_parallel_execution_config.cpp
         src/rml_model.cpp
         src/rml_model_data.cpp
         src/rml_model_msh.cpp
@@ -59,6 +60,7 @@ qt_add_library(range-model-lib
         src/rml_problem_task_item.cpp
         src/rml_structural_product_profile.cpp
         src/rml_structural_interaction.cpp
+        src/rml_structural_dynamics_setup.cpp
         src/rml_radiation_setup.cpp
         src/rml_results.cpp
         src/rml_save_file.cpp
@@ -119,6 +121,7 @@ qt_add_library(range-model-lib
         include/rml_mesh_pipeline.h
         include/rml_mesh_setup.h
         include/rml_modal_setup.h
+        include/rml_parallel_execution_config.h
         include/rml_model.h
         include/rml_model_data.h
         include/rml_model_msh.h
@@ -139,6 +142,7 @@ qt_add_library(range-model-lib
         include/rml_problem_type.h
         include/rml_structural_product_profile.h
         include/rml_structural_interaction.h
+        include/rml_structural_dynamics_setup.h
         include/rml_radiation_setup.h
         include/rml_results.h
         include/rml_save_file.h
@@ -168,7 +172,7 @@ target_compile_definitions(range-model-lib
     PRIVATE
         FILE_MAJOR_VERSION=1
         FILE_MINOR_VERSION=3
-        FILE_RELEASE_VERSION=5
+        FILE_RELEASE_VERSION=6
         TETLIBRARY
 )
 

@@ -2,6 +2,7 @@
 #include <QTemporaryDir>
 
 #include "rml_model.h"
+#include "rml_file_io.h"
 
 class TestProblemSetup : public QObject
 {
@@ -14,6 +15,10 @@ private slots:
     void modelRoundTrip();
     void structuralCatalogAndCouplings();
     void structuralValidation();
+    void dynamicsAndParallelValidation();
+    void readsLegacyProblemSetup_data();
+    void readsLegacyProblemSetup();
+    void angularKinematicsDescriptors();
 };
 
 void TestProblemSetup::defaultsAndCopy()
@@ -24,6 +29,8 @@ void TestProblemSetup::defaultsAndCopy()
     setup.setMassMatrixType(RMassMatrixType::Lumped);
     const RProblemSetup copy(setup);
     QCOMPARE(copy.getMassMatrixType(),RMassMatrixType::Lumped);
+    QVERIFY(!copy.getStructuralDynamicsSetup().getEnabled());
+    QCOMPARE(copy.getParallelExecutionConfig().getMode(),RParallelExecutionMode::Auto);
 }
 
 void TestProblemSetup::rejectsInvalidMassMatrixType()
@@ -68,6 +75,20 @@ void TestProblemSetup::modelRoundTrip()
     sensor.quantity = RStructuralSensorQuantity::Displacement;
     sensor.unit = "m";
     source.getProblemSetup().getStructuralInteractionSetup().getSensors().push_back(sensor);
+    RStructuralDynamicsSetup &dynamics = source.getProblemSetup().getStructuralDynamicsSetup();
+    dynamics.setEnabled(true);
+    dynamics.setMethod(RStructuralTimeIntegrationMethod::GeneralizedAlpha);
+    dynamics.setTimeStep(0.0025);
+    dynamics.setNSteps(400);
+    dynamics.setOutputFrequency(8);
+    dynamics.setRayleighAlpha(0.12);
+    dynamics.setRayleighBeta(0.0003);
+    dynamics.setRhoInfinity(0.65);
+    dynamics.setModalDampingRatios({0.02,0.03});
+    RParallelExecutionConfig &parallel = source.getProblemSetup().getParallelExecutionConfig();
+    parallel.setMode(RParallelExecutionMode::FixedThreads);
+    parallel.setRequestedThreads(4);
+    parallel.setDeterministicReduction(false);
 
     const QString extension = RModel::getDefaultFileExtension(binary);
     const QString fileName = directory.filePath("problem-setup." + extension);
@@ -91,6 +112,117 @@ void TestProblemSetup::modelRoundTrip()
     QCOMPARE(restoredSetup.getLinearConstraints()[0].terms.size(),size_t(2));
     QCOMPARE(restoredSetup.getSensors().size(),size_t(1));
     QCOMPARE(restoredSetup.getSensors()[0].quantity,RStructuralSensorQuantity::Displacement);
+    const RStructuralDynamicsSetup &restoredDynamics = restored.getProblemSetup().getStructuralDynamicsSetup();
+    QVERIFY(restoredDynamics.getEnabled());
+    QCOMPARE(restoredDynamics.getMethod(),RStructuralTimeIntegrationMethod::GeneralizedAlpha);
+    QCOMPARE(restoredDynamics.getTimeStep(),0.0025);
+    QCOMPARE(restoredDynamics.getNSteps(),uint(400));
+    QCOMPARE(restoredDynamics.getOutputFrequency(),uint(8));
+    QCOMPARE(restoredDynamics.getRayleighAlpha(),0.12);
+    QCOMPARE(restoredDynamics.getRayleighBeta(),0.0003);
+    QCOMPARE(restoredDynamics.getRhoInfinity(),0.65);
+    QCOMPARE(restoredDynamics.getModalDampingRatios(),std::vector<double>({0.02,0.03}));
+    const RParallelExecutionConfig &restoredParallel = restored.getProblemSetup().getParallelExecutionConfig();
+    QCOMPARE(restoredParallel.getMode(),RParallelExecutionMode::FixedThreads);
+    QCOMPARE(restoredParallel.getRequestedThreads(),uint(4));
+    QVERIFY(!restoredParallel.getDeterministicReduction());
+}
+
+void TestProblemSetup::dynamicsAndParallelValidation()
+{
+    RStructuralDynamicsSetup dynamics;
+    QVERIFY(!dynamics.getEnabled());
+    QCOMPARE(dynamics.getMethod(),RStructuralTimeIntegrationMethod::Newmark);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setTimeStep(0.0),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setNSteps(0),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setOutputFrequency(0),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setRayleighAlpha(-1.0),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setRhoInfinity(1.1),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setModalDampingRatios({0.02,1.0}),RError);
+    QVERIFY_EXCEPTION_THROWN(dynamics.setMethod(static_cast<RStructuralTimeIntegrationMethod>(99)),RError);
+    dynamics.setMethod(RStructuralTimeIntegrationMethod::CentralDifference);
+    dynamics.validate();
+
+    RParallelExecutionConfig parallel;
+    QCOMPARE(parallel.getMode(),RParallelExecutionMode::Auto);
+    QVERIFY(parallel.getDeterministicReduction());
+    parallel.setMode(RParallelExecutionMode::FixedThreads);
+    QVERIFY_EXCEPTION_THROWN(parallel.validate(),RError);
+    parallel.setRequestedThreads(3);
+    parallel.validate();
+    parallel.setMode(RParallelExecutionMode::SerialDeterministic);
+    QVERIFY_EXCEPTION_THROWN(parallel.validate(),RError);
+    parallel.setRequestedThreads(0);
+    parallel.validate();
+}
+
+void TestProblemSetup::readsLegacyProblemSetup_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.5") << false;
+    QTest::newRow("binary-1.3.5") << true;
+}
+
+void TestProblemSetup::readsLegacyProblemSetup()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "old-setup.bin" : "old-setup.txt");
+    RProblemSetup source;
+    source.setMassMatrixType(RMassMatrixType::Lumped);
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        if (binary)
+        {
+            RFileIO::writeBinary(file,source.getRestart());
+            RFileIO::writeBinary(file,source.getRadiationSetup());
+            RFileIO::writeBinary(file,source.getModalSetup());
+            RFileIO::writeBinary(file,source.getMeshSetup());
+            RFileIO::writeBinary(file,source.getAcousticSetup());
+            RFileIO::writeBinary(file,int(source.getMassMatrixType()));
+            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+        }
+        else
+        {
+            RFileIO::writeAscii(file,source.getRestart());
+            RFileIO::writeAscii(file,source.getRadiationSetup());
+            RFileIO::writeAscii(file,source.getModalSetup());
+            RFileIO::writeAscii(file,source.getMeshSetup());
+            RFileIO::writeAscii(file,source.getAcousticSetup());
+            RFileIO::writeAscii(file,int(source.getMassMatrixType()));
+            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+        }
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,5));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RProblemSetup restored;
+    restored.getStructuralDynamicsSetup().setEnabled(true);
+    restored.getParallelExecutionConfig().setMode(RParallelExecutionMode::FixedThreads);
+    restored.getParallelExecutionConfig().setRequestedThreads(2);
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QCOMPARE(restored.getMassMatrixType(),RMassMatrixType::Lumped);
+    QVERIFY(!restored.getStructuralDynamicsSetup().getEnabled());
+    QCOMPARE(restored.getParallelExecutionConfig().getMode(),RParallelExecutionMode::Auto);
+}
+
+void TestProblemSetup::angularKinematicsDescriptors()
+{
+    QCOMPARE(RVariable::getId(R_VARIABLE_ANGULAR_VELOCITY),QString("var-angular_velocity"));
+    QCOMPARE(RVariable::getUnits(R_VARIABLE_ANGULAR_VELOCITY),QString("rad/s"));
+    QCOMPARE(RVariable::getUnits(R_VARIABLE_ANGULAR_ACCELERATION),QString("rad/s^2"));
+    QCOMPARE(RVariable::guessVectorName(R_VARIABLE_ANGULAR_VELOCITY_X,
+                                       R_VARIABLE_ANGULAR_VELOCITY_Y,
+                                       R_VARIABLE_ANGULAR_VELOCITY_Z),
+             RVariable::getName(R_VARIABLE_ANGULAR_VELOCITY));
+    QCOMPARE(RVariable::guessVectorUnits(R_VARIABLE_ANGULAR_ACCELERATION_X,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Y,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Z),
+             RVariable::getUnits(R_VARIABLE_ANGULAR_ACCELERATION));
 }
 
 static RModel makeInteractionModel()

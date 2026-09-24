@@ -139,7 +139,15 @@ const RVariableDesc variableDesc [R_VARIABLE_N_TYPES] =
     { "var-moment"                       , "Moment",                                    "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
     { "var-moment_x"                     , "Moment about X axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
     { "var-moment_y"                     , "Moment about Y axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
-    { "var-moment_z"                     , "Moment about Z axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE }
+    { "var-moment_z"                     , "Moment about Z axis",                       "N*m",        0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_velocity"             , "Angular velocity",                         "rad/s",      0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS },
+    { "var-angular_velocity_x"           , "Angular velocity about X axis",            "rad/s",      0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_velocity_y"           , "Angular velocity about Y axis",            "rad/s",      0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_velocity_z"           , "Angular velocity about Z axis",            "rad/s",      0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_acceleration"         , "Angular acceleration",                     "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS },
+    { "var-angular_acceleration_x"       , "Angular acceleration about X axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_acceleration_y"       , "Angular acceleration about Y axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-angular_acceleration_z"       , "Angular acceleration about Z axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE }
 };
 
 
@@ -594,6 +602,20 @@ const QString RVariable::guessVectorName(RVariableType type1,
        return RVariable::getName(R_VARIABLE_ACCELERATION);
    }
    else if (RVariable::checkVectorTypes(type1,type2,type3,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_X,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Y,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Z))
+   {
+       return RVariable::getName(R_VARIABLE_ANGULAR_ACCELERATION);
+   }
+   else if (RVariable::checkVectorTypes(type1,type2,type3,
+                                        R_VARIABLE_ANGULAR_VELOCITY_X,
+                                        R_VARIABLE_ANGULAR_VELOCITY_Y,
+                                        R_VARIABLE_ANGULAR_VELOCITY_Z))
+   {
+       return RVariable::getName(R_VARIABLE_ANGULAR_VELOCITY);
+   }
+   else if (RVariable::checkVectorTypes(type1,type2,type3,
                                         R_VARIABLE_CURRENT_DENSITY_X,
                                         R_VARIABLE_CURRENT_DENSITY_Y,
                                         R_VARIABLE_CURRENT_DENSITY_Z))
@@ -697,6 +719,20 @@ const QString RVariable::guessVectorUnits(RVariableType type1,
                                    R_VARIABLE_ACCELERATION_Z))
    {
        return RVariable::getUnits(R_VARIABLE_ACCELERATION);
+   }
+   else if (RVariable::checkVectorTypes(type1,type2,type3,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_X,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Y,
+                                        R_VARIABLE_ANGULAR_ACCELERATION_Z))
+   {
+       return RVariable::getUnits(R_VARIABLE_ANGULAR_ACCELERATION);
+   }
+   else if (RVariable::checkVectorTypes(type1,type2,type3,
+                                        R_VARIABLE_ANGULAR_VELOCITY_X,
+                                        R_VARIABLE_ANGULAR_VELOCITY_Y,
+                                        R_VARIABLE_ANGULAR_VELOCITY_Z))
+   {
+       return RVariable::getUnits(R_VARIABLE_ANGULAR_VELOCITY);
    }
    else if (RVariable::checkVectorTypes(type1,type2,type3,
                                         R_VARIABLE_CURRENT_DENSITY_X,

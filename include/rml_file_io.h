@@ -23,6 +23,7 @@
 #include "rml_material.h"
 #include "rml_mesh_setup.h"
 #include "rml_modal_setup.h"
+#include "rml_parallel_execution_config.h"
 #include "rml_model_data.h"
 #include "rml_monitoring_point.h"
 #include "rml_monitoring_point_manager.h"
@@ -40,6 +41,7 @@
 #include "rml_sparse_vector.h"
 #include "rml_stream_line.h"
 #include "rml_structural_interaction.h"
+#include "rml_structural_dynamics_setup.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -799,6 +801,17 @@ class RFileIO
         static void writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine = true);
         //! Write RProblemSetup.
         static void writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup);
+
+        // Stage 5 structural transient and execution settings.
+        static void readAscii(RFile &inFile, RStructuralDynamicsSetup &setup);
+        static void readBinary(RFile &inFile, RStructuralDynamicsSetup &setup);
+        static void writeAscii(RSaveFile &outFile, const RStructuralDynamicsSetup &setup, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralDynamicsSetup &setup);
+
+        static void readAscii(RFile &inFile, RParallelExecutionConfig &config);
+        static void readBinary(RFile &inFile, RParallelExecutionConfig &config);
+        static void writeAscii(RSaveFile &outFile, const RParallelExecutionConfig &config, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RParallelExecutionConfig &config);
 
         // RStructuralInteractionSetup
 

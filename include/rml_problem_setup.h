@@ -4,7 +4,9 @@
 #include "rml_acoustic_setup.h"
 #include "rml_mesh_setup.h"
 #include "rml_modal_setup.h"
+#include "rml_parallel_execution_config.h"
 #include "rml_radiation_setup.h"
+#include "rml_structural_dynamics_setup.h"
 #include "rml_structural_interaction.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
@@ -33,6 +35,10 @@ class RProblemSetup
         RMassMatrixType massMatrixType;
         //! Structural constraints, couplings, sensors and actuators.
         RStructuralInteractionSetup structuralInteractionSetup;
+        //! Optional second-order structural transient setup.
+        RStructuralDynamicsSetup structuralDynamicsSetup;
+        //! Solver execution policy.
+        RParallelExecutionConfig parallelExecutionConfig;
 
     private:
 
@@ -104,6 +110,14 @@ class RProblemSetup
         const RStructuralInteractionSetup &getStructuralInteractionSetup() const;
         RStructuralInteractionSetup &getStructuralInteractionSetup();
         void setStructuralInteractionSetup(const RStructuralInteractionSetup &setup);
+
+        const RStructuralDynamicsSetup &getStructuralDynamicsSetup() const;
+        RStructuralDynamicsSetup &getStructuralDynamicsSetup();
+        void setStructuralDynamicsSetup(const RStructuralDynamicsSetup &setup);
+
+        const RParallelExecutionConfig &getParallelExecutionConfig() const;
+        RParallelExecutionConfig &getParallelExecutionConfig();
+        void setParallelExecutionConfig(const RParallelExecutionConfig &config);
 
         //! Convert to printable string.
         QString toString() const;

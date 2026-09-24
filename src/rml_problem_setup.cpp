@@ -13,6 +13,8 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->acousticSetup = pProblemSetup->acousticSetup;
         this->massMatrixType = pProblemSetup->massMatrixType;
         this->structuralInteractionSetup = pProblemSetup->structuralInteractionSetup;
+        this->structuralDynamicsSetup = pProblemSetup->structuralDynamicsSetup;
+        this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
 }
 
@@ -141,6 +143,38 @@ void RProblemSetup::setStructuralInteractionSetup(const RStructuralInteractionSe
     this->structuralInteractionSetup = setup;
 }
 
+const RStructuralDynamicsSetup &RProblemSetup::getStructuralDynamicsSetup() const
+{
+    return this->structuralDynamicsSetup;
+}
+
+RStructuralDynamicsSetup &RProblemSetup::getStructuralDynamicsSetup()
+{
+    return this->structuralDynamicsSetup;
+}
+
+void RProblemSetup::setStructuralDynamicsSetup(const RStructuralDynamicsSetup &setup)
+{
+    setup.validate();
+    this->structuralDynamicsSetup = setup;
+}
+
+const RParallelExecutionConfig &RProblemSetup::getParallelExecutionConfig() const
+{
+    return this->parallelExecutionConfig;
+}
+
+RParallelExecutionConfig &RProblemSetup::getParallelExecutionConfig()
+{
+    return this->parallelExecutionConfig;
+}
+
+void RProblemSetup::setParallelExecutionConfig(const RParallelExecutionConfig &config)
+{
+    config.validate();
+    this->parallelExecutionConfig = config;
+}
+
 QString RProblemSetup::toString() const
 {
     return "{ Restart: " + QString(this->restart?"True":"False")
@@ -154,5 +188,7 @@ QString RProblemSetup::toString() const
             + ", Couplings: " + QString::number(this->structuralInteractionSetup.getCouplings().size())
             + ", Sensors: " + QString::number(this->structuralInteractionSetup.getSensors().size())
             + ", Actuators: " + QString::number(this->structuralInteractionSetup.getActuators().size())
+            + ", Structural dynamics: " + this->structuralDynamicsSetup.toString()
+            + ", Parallel execution: " + this->parallelExecutionConfig.toString()
             + " }";
 }

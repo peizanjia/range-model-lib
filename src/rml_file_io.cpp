@@ -3,6 +3,7 @@
 #include <rbl_utils.h>
 
 #include "rml_file_io.h"
+#include "rml_problem_setup.h"
 
 
 void RFileIO::writeNewLineAscii(RSaveFile &outFile)
@@ -4517,6 +4518,16 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
     {
         RFileIO::readAscii(inFile,problemSetup.structuralInteractionSetup);
     }
+    if (inFile.getVersion() > RVersion(1,3,5))
+    {
+        RFileIO::readAscii(inFile,problemSetup.structuralDynamicsSetup);
+        RFileIO::readAscii(inFile,problemSetup.parallelExecutionConfig);
+    }
+    else
+    {
+        problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
+        problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4541,6 +4552,16 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
     if (inFile.getVersion() > RVersion(1,3,4))
     {
         RFileIO::readBinary(inFile,problemSetup.structuralInteractionSetup);
+    }
+    if (inFile.getVersion() > RVersion(1,3,5))
+    {
+        RFileIO::readBinary(inFile,problemSetup.structuralDynamicsSetup);
+        RFileIO::readBinary(inFile,problemSetup.parallelExecutionConfig);
+    }
+    else
+    {
+        problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
+        problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
     }
 }
 
@@ -4577,6 +4598,16 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,problemSetup.structuralInteractionSetup,addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,problemSetup.structuralDynamicsSetup,addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,problemSetup.parallelExecutionConfig,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4588,6 +4619,182 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.acousticSetup);
     RFileIO::writeBinary(outFile,int(problemSetup.massMatrixType));
     RFileIO::writeBinary(outFile,problemSetup.structuralInteractionSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsSetup);
+    RFileIO::writeBinary(outFile,problemSetup.parallelExecutionConfig);
+}
+
+
+/*********************************************************************
+ *  Stage 5 transient dynamics and parallel execution               *
+ *********************************************************************/
+
+void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsSetup &setup)
+{
+    bool enabled = false;
+    int method = 0;
+    double timeStep, rayleighAlpha, rayleighBeta, rhoInfinity, gamma, beta;
+    uint nSteps, outputFrequency, nRatios;
+    RFileIO::readAscii(inFile,enabled);
+    RFileIO::readAscii(inFile,method);
+    RFileIO::readAscii(inFile,timeStep);
+    RFileIO::readAscii(inFile,nSteps);
+    RFileIO::readAscii(inFile,outputFrequency);
+    RFileIO::readAscii(inFile,rayleighAlpha);
+    RFileIO::readAscii(inFile,rayleighBeta);
+    RFileIO::readAscii(inFile,rhoInfinity);
+    RFileIO::readAscii(inFile,gamma);
+    RFileIO::readAscii(inFile,beta);
+    RFileIO::readAscii(inFile,nRatios);
+    if (nRatios > 100000)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Excessive modal damping ratio count (%u).",nRatios);
+    }
+    std::vector<double> ratios(nRatios);
+    for (double &ratio : ratios) RFileIO::readAscii(inFile,ratio);
+    RStructuralDynamicsSetup result;
+    result.setEnabled(enabled);
+    result.setMethod(static_cast<RStructuralTimeIntegrationMethod>(method));
+    result.setTimeStep(timeStep);
+    result.setNSteps(nSteps);
+    result.setOutputFrequency(outputFrequency);
+    result.setRayleighAlpha(rayleighAlpha);
+    result.setRayleighBeta(rayleighBeta);
+    result.setRhoInfinity(rhoInfinity);
+    result.setNewmarkGamma(gamma);
+    result.setNewmarkBeta(beta);
+    result.setModalDampingRatios(ratios);
+    result.validate();
+    setup = result;
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsSetup &setup)
+{
+    bool enabled = false;
+    int method = 0;
+    double timeStep, rayleighAlpha, rayleighBeta, rhoInfinity, gamma, beta;
+    uint nSteps, outputFrequency, nRatios;
+    RFileIO::readBinary(inFile,enabled);
+    RFileIO::readBinary(inFile,method);
+    RFileIO::readBinary(inFile,timeStep);
+    RFileIO::readBinary(inFile,nSteps);
+    RFileIO::readBinary(inFile,outputFrequency);
+    RFileIO::readBinary(inFile,rayleighAlpha);
+    RFileIO::readBinary(inFile,rayleighBeta);
+    RFileIO::readBinary(inFile,rhoInfinity);
+    RFileIO::readBinary(inFile,gamma);
+    RFileIO::readBinary(inFile,beta);
+    RFileIO::readBinary(inFile,nRatios);
+    if (nRatios > 100000)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Excessive modal damping ratio count (%u).",nRatios);
+    }
+    std::vector<double> ratios(nRatios);
+    for (double &ratio : ratios) RFileIO::readBinary(inFile,ratio);
+    RStructuralDynamicsSetup result;
+    result.setEnabled(enabled);
+    result.setMethod(static_cast<RStructuralTimeIntegrationMethod>(method));
+    result.setTimeStep(timeStep);
+    result.setNSteps(nSteps);
+    result.setOutputFrequency(outputFrequency);
+    result.setRayleighAlpha(rayleighAlpha);
+    result.setRayleighBeta(rayleighBeta);
+    result.setRhoInfinity(rhoInfinity);
+    result.setNewmarkGamma(gamma);
+    result.setNewmarkBeta(beta);
+    result.setModalDampingRatios(ratios);
+    result.validate();
+    setup = result;
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsSetup &setup, bool addNewLine)
+{
+    setup.validate();
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+    write(setup.getEnabled());
+    write(int(setup.getMethod()));
+    write(setup.getTimeStep());
+    write(setup.getNSteps());
+    write(setup.getOutputFrequency());
+    write(setup.getRayleighAlpha());
+    write(setup.getRayleighBeta());
+    write(setup.getRhoInfinity());
+    write(setup.getNewmarkGamma());
+    write(setup.getNewmarkBeta());
+    write(uint(setup.getModalDampingRatios().size()));
+    for (double ratio : setup.getModalDampingRatios()) write(ratio);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsSetup &setup)
+{
+    setup.validate();
+    RFileIO::writeBinary(outFile,setup.getEnabled());
+    RFileIO::writeBinary(outFile,int(setup.getMethod()));
+    RFileIO::writeBinary(outFile,setup.getTimeStep());
+    RFileIO::writeBinary(outFile,setup.getNSteps());
+    RFileIO::writeBinary(outFile,setup.getOutputFrequency());
+    RFileIO::writeBinary(outFile,setup.getRayleighAlpha());
+    RFileIO::writeBinary(outFile,setup.getRayleighBeta());
+    RFileIO::writeBinary(outFile,setup.getRhoInfinity());
+    RFileIO::writeBinary(outFile,setup.getNewmarkGamma());
+    RFileIO::writeBinary(outFile,setup.getNewmarkBeta());
+    RFileIO::writeBinary(outFile,uint(setup.getModalDampingRatios().size()));
+    for (double ratio : setup.getModalDampingRatios()) RFileIO::writeBinary(outFile,ratio);
+}
+
+void RFileIO::readAscii(RFile &inFile, RParallelExecutionConfig &config)
+{
+    int mode;
+    uint threads;
+    bool deterministic;
+    RFileIO::readAscii(inFile,mode);
+    RFileIO::readAscii(inFile,threads);
+    RFileIO::readAscii(inFile,deterministic);
+    RParallelExecutionConfig result;
+    result.setMode(static_cast<RParallelExecutionMode>(mode));
+    result.setRequestedThreads(threads);
+    result.setDeterministicReduction(deterministic);
+    result.validate();
+    config = result;
+}
+
+void RFileIO::readBinary(RFile &inFile, RParallelExecutionConfig &config)
+{
+    int mode;
+    uint threads;
+    bool deterministic;
+    RFileIO::readBinary(inFile,mode);
+    RFileIO::readBinary(inFile,threads);
+    RFileIO::readBinary(inFile,deterministic);
+    RParallelExecutionConfig result;
+    result.setMode(static_cast<RParallelExecutionMode>(mode));
+    result.setRequestedThreads(threads);
+    result.setDeterministicReduction(deterministic);
+    result.validate();
+    config = result;
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RParallelExecutionConfig &config, bool addNewLine)
+{
+    config.validate();
+    RFileIO::writeAscii(outFile,int(config.getMode()),addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,config.getRequestedThreads(),addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,config.getDeterministicReduction(),addNewLine);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RParallelExecutionConfig &config)
+{
+    config.validate();
+    RFileIO::writeBinary(outFile,int(config.getMode()));
+    RFileIO::writeBinary(outFile,config.getRequestedThreads());
+    RFileIO::writeBinary(outFile,config.getDeterministicReduction());
 }
 
 
