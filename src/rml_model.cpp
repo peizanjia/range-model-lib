@@ -495,11 +495,6 @@ QString RModel::write(const QString &fileName, bool writeLinkFile) const
 
     try
     {
-        if (writeLinkFile)
-        {
-            RModel::writeLink(linkFileName,targetFileName);
-        }
-
         if (ext == RModel::getDefaultFileExtension(false))
         {
             this->writeAscii(writeLinkFile?targetFileName:linkFileName);
@@ -511,6 +506,13 @@ QString RModel::write(const QString &fileName, bool writeLinkFile) const
         else
         {
             throw RError(RError::Type::InvalidFileName,R_ERROR_REF, "Unknown extension \"" + ext + "\".");
+        }
+        // The link is the visible latest-record pointer.  Publish it only
+        // after QSaveFile has committed the target; a failed target write must
+        // leave the previous link usable.
+        if (writeLinkFile)
+        {
+            RModel::writeLink(linkFileName,targetFileName);
         }
     }
     catch (RError &error)
@@ -7778,7 +7780,11 @@ void RModel::writeAscii(const QString &fileName) const
         RFileIO::writeAscii(modelFile,this->volumeNeigs[i]);
     }
 
-    modelFile.commit();
+    if (!modelFile.commit())
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Failed to commit model file '%s'.",fileName.toUtf8().constData());
+    }
 
     RProgressFinalize("Done");
 } /* RModel::writeAscii */
@@ -7946,7 +7952,11 @@ void RModel::writeBinary(const QString &fileName) const
         RFileIO::writeBinary(modelFile,this->volumeNeigs[i]);
     }
 
-    modelFile.commit();
+    if (!modelFile.commit())
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Failed to commit model file '%s'.",fileName.toUtf8().constData());
+    }
 
     RProgressFinalize("Done");
 } /* RModel::writeBinary */

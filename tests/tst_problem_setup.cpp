@@ -1,8 +1,10 @@
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QDir>
 
 #include "rml_model.h"
 #include "rml_file_io.h"
+#include "rml_file_utils.h"
 
 class TestProblemSetup : public QObject
 {
@@ -27,6 +29,8 @@ private slots:
     void readsVersion137ButDisablesUnboundCheckpoint();
     void angularKinematicsDescriptors();
     void rotationalInitialConditions();
+    void failedTargetWriteKeepsPreviousLink_data();
+    void failedTargetWriteKeepsPreviousLink();
 };
 
 void TestProblemSetup::defaultsAndCopy()
@@ -479,6 +483,40 @@ void TestProblemSetup::rotationalInitialConditions()
                                          R_VARIABLE_ANGULAR_VELOCITY_Z}));
     QCOMPARE(RInitialCondition::getProblemTypeMask(R_INITIAL_CONDITION_ROTATION) & R_PROBLEM_STRESS,
              RProblemTypeMask(R_PROBLEM_STRESS));
+}
+
+void TestProblemSetup::failedTargetWriteKeepsPreviousLink_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii") << false;
+    QTest::newRow("binary") << true;
+}
+
+void TestProblemSetup::failedTargetWriteKeepsPreviousLink()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString linkPath = directory.filePath(binary ? "latest.rbm" : "latest.ram");
+    RModel source;
+    source.setName("accepted");
+    source.getTimeSolver().setEnabled(true);
+    source.getTimeSolver().setTimes({0.01,0.02});
+    QCOMPARE(source.write(linkPath,true),linkPath);
+
+    RModel first;
+    first.read(linkPath);
+    QCOMPARE(first.getName(),QString("accepted"));
+
+    source.setName("uncommitted");
+    source.getTimeSolver().setCurrentTimeStep(1);
+    const QString blockedTarget = RFileUtils::getFileNameWithTimeStep(linkPath,2);
+    QVERIFY(QDir().mkpath(blockedTarget));
+    QVERIFY_EXCEPTION_THROWN(source.write(linkPath,true),RError);
+
+    RModel afterFailure;
+    afterFailure.read(linkPath);
+    QCOMPARE(afterFailure.getName(),QString("accepted"));
 }
 
 static RModel makeInteractionModel()

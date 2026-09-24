@@ -257,7 +257,11 @@ namespace RFileUtils
             }
             RFileIO::writeBinary(linkFile,RFileHeader(R_FILE_TYPE_LINK,version,relativeTargetFileName));
 
-            linkFile.commit();
+            if (!linkFile.commit())
+            {
+                throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                             "Failed to commit link file '%s'.",linkFileName.toUtf8().constData());
+            }
         }
         else
         {
@@ -274,7 +278,11 @@ namespace RFileUtils
 
             RFileIO::writeAscii(linkFile,RFileHeader(R_FILE_TYPE_LINK,version,"\"" + relativeTargetFileName + "\""));
 
-            linkFile.commit();
+            if (!linkFile.commit())
+            {
+                throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                             "Failed to commit link file '%s'.",linkFileName.toUtf8().constData());
+            }
         }
     }
 
