@@ -90,7 +90,9 @@ const RProblemDesc problemDesc [] =
     {
         "prb-stress",
         "Stress analysis",
-        "Stress and linear elasto-dynamics analysis including modal analysis.",
+        "Stress analysis. The legacy time solver is first-order relaxation; "
+        "second-order elastodynamics requires StructuralDynamicsSetup. "
+        "Modal analysis is configured separately.",
         R_PROBLEM_STRESS,
         R_PROBLEM_NONE,
         R_PROBLEM_NONE,

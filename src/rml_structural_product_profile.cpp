@@ -278,8 +278,13 @@ RProductProfileValidation RStructuralProductProfile::validate(const RModel &mode
                            elementNames.join(", ") + ".");
     }
 
+    // Structural dynamics reuses RTimeSolver for its time grid after the
+    // second-order setup selects the actual integration formulation. Reject
+    // only the legacy first-order structural march, not that shared time grid.
     const bool unsupportedTimeSolver =
-        model.getTimeSolver().getEnabled() && !RStructuralProductProfile::isTimeSolverEnabled();
+        model.getTimeSolver().getEnabled() &&
+        !model.getProblemSetup().getStructuralDynamicsSetup().getEnabled() &&
+        !RStructuralProductProfile::isTimeSolverEnabled();
     if (unsupportedTimeSolver)
     {
         diagnostics.append("Transient structural analysis is not enabled because the current time solver is a legacy first-order relaxation, not a verified structural dynamics formulation.");

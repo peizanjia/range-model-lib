@@ -4,6 +4,7 @@
 #include "rml_capability_registry.h"
 #include "rml_boundary_condition.h"
 #include "rml_environment_condition.h"
+#include "rml_model.h"
 #include "rml_problem.h"
 #include "rml_structural_product_profile.h"
 
@@ -17,6 +18,7 @@ private slots:
     void separatesCapabilityEvidence();
     void reportsElementCapabilityEvidence();
     void acceptsStructuralAndGeometryOnlyModels();
+    void distinguishesLegacyAndSecondOrderTimeSolvers();
     void rejectsUnsupportedAndMixedModels();
     void keepsTemperatureAsStructuralInput();
     void filtersStructuralProductFeatures();
@@ -99,6 +101,28 @@ void TestStructuralProductProfile::acceptsStructuralAndGeometryOnlyModels()
     QVERIFY(RStructuralProductProfile::validate(R_PROBLEM_STRESS).isAccepted());
     QVERIFY(RStructuralProductProfile::validate(R_PROBLEM_STRESS_MODAL).isAccepted());
     QVERIFY(RStructuralProductProfile::validate(R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL).isAccepted());
+}
+
+void TestStructuralProductProfile::distinguishesLegacyAndSecondOrderTimeSolvers()
+{
+    RModel model;
+    model.setProblemTaskTree(RProblemTaskItem(R_PROBLEM_STRESS));
+
+    model.getTimeSolver().setEnabled(true);
+    const RProductProfileValidation legacy = RStructuralProductProfile::validate(model);
+    QVERIFY(!legacy.isAccepted());
+    QVERIFY(legacy.getDiagnostic().contains(QStringLiteral("legacy first-order")));
+
+    model.getProblemSetup().getStructuralDynamicsSetup().setEnabled(true);
+    QVERIFY(RStructuralProductProfile::validate(model).isAccepted());
+
+    // The second-order solver enables and configures the shared time grid at
+    // run start; a model prepared but not yet run must also be accepted.
+    model.getTimeSolver().setEnabled(false);
+    QVERIFY(RStructuralProductProfile::validate(model).isAccepted());
+
+    QVERIFY(RProblem::getDesc(R_PROBLEM_STRESS).contains(
+        QStringLiteral("second-order elastodynamics requires StructuralDynamicsSetup")));
 }
 
 void TestStructuralProductProfile::rejectsUnsupportedAndMixedModels()
