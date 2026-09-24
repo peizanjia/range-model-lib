@@ -7,6 +7,7 @@
 #include "rml_parallel_execution_config.h"
 #include "rml_radiation_setup.h"
 #include "rml_structural_dynamics_setup.h"
+#include "rml_structural_dynamics_restart_data.h"
 #include "rml_structural_interaction.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
@@ -37,6 +38,8 @@ class RProblemSetup
         RStructuralInteractionSetup structuralInteractionSetup;
         //! Optional second-order structural transient setup.
         RStructuralDynamicsSetup structuralDynamicsSetup;
+        //! Last accepted second-order transient state for disk restart.
+        RStructuralDynamicsRestartData structuralDynamicsRestartData;
         //! Solver execution policy.
         RParallelExecutionConfig parallelExecutionConfig;
 
@@ -114,6 +117,10 @@ class RProblemSetup
         const RStructuralDynamicsSetup &getStructuralDynamicsSetup() const;
         RStructuralDynamicsSetup &getStructuralDynamicsSetup();
         void setStructuralDynamicsSetup(const RStructuralDynamicsSetup &setup);
+
+        const RStructuralDynamicsRestartData &getStructuralDynamicsRestartData() const;
+        RStructuralDynamicsRestartData &getStructuralDynamicsRestartData();
+        void setStructuralDynamicsRestartData(const RStructuralDynamicsRestartData &data);
 
         const RParallelExecutionConfig &getParallelExecutionConfig() const;
         RParallelExecutionConfig &getParallelExecutionConfig();

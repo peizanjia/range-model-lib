@@ -18,7 +18,13 @@ private slots:
     void dynamicsAndParallelValidation();
     void readsLegacyProblemSetup_data();
     void readsLegacyProblemSetup();
+    void restartRoundTrip_data();
+    void restartRoundTrip();
+    void restartRejectsChangedMeshAndDofOrder();
+    void readsVersion136WithoutCheckpoint_data();
+    void readsVersion136WithoutCheckpoint();
     void angularKinematicsDescriptors();
+    void rotationalInitialConditions();
 };
 
 void TestProblemSetup::defaultsAndCopy()
@@ -208,6 +214,159 @@ void TestProblemSetup::readsLegacyProblemSetup()
     QCOMPARE(restored.getMassMatrixType(),RMassMatrixType::Lumped);
     QVERIFY(!restored.getStructuralDynamicsSetup().getEnabled());
     QCOMPARE(restored.getParallelExecutionConfig().getMode(),RParallelExecutionMode::Auto);
+    QVERIFY(!restored.getStructuralDynamicsRestartData().available);
+}
+
+static RModel makeRestartModel()
+{
+    RModel model;
+    model.addNode(RNode(0.0,0.0,0.0));
+    model.addNode(RNode(1.23456789,0.0,0.0));
+    RElement element(R_ELEMENT_TRUSS1);
+    element.setNodeId(0,0);
+    element.setNodeId(1,1);
+    model.addElement(element);
+    return model;
+}
+
+static std::vector<RStructuralDofRef> restartDofs()
+{
+    return {{0,RDofType::UX},{1,RDofType::UX}};
+}
+
+void TestProblemSetup::restartRoundTrip_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii") << false;
+    QTest::newRow("binary") << true;
+}
+
+void TestProblemSetup::restartRoundTrip()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    RModel source = makeRestartModel();
+    const auto dofs = restartDofs();
+    RStructuralDynamicsRestartData checkpoint;
+    checkpoint.available = true;
+    checkpoint.completedSteps = 7;
+    checkpoint.time = 0.0175;
+    checkpoint.fixedTimeStep = 0.0025;
+    checkpoint.meshNodeCount = source.getNNodes();
+    checkpoint.meshElementCount = source.getNElements();
+    checkpoint.physicalDofCount = uint(dofs.size());
+    checkpoint.meshFingerprint = RStructuralDynamicsRestartData::computeMeshFingerprint(source);
+    checkpoint.dofFingerprint = RStructuralDynamicsRestartData::computeDofFingerprint(dofs);
+    checkpoint.q = {0.12345678901234566};
+    checkpoint.v = {-0.98765432101234567};
+    checkpoint.a = {0.33333333333333331};
+    checkpoint.externalForce = {1.1234567890123456};
+    checkpoint.cumulativeExternalWork = 0.12345678901234566;
+    checkpoint.cumulativeDampingDissipation = 0.09876543210123456;
+    checkpoint.initialMechanicalEnergy = 1.2345678901234567;
+    checkpoint.validate();
+    source.getProblemSetup().setStructuralDynamicsRestartData(checkpoint);
+
+    const QString path = directory.filePath(binary ? "checkpoint.rbm" : "checkpoint.ram");
+    RModel restored;
+    QCOMPARE(source.write(path,false),path);
+    restored.read(path);
+    const auto &readBack = restored.getProblemSetup().getStructuralDynamicsRestartData();
+    QVERIFY(readBack.available);
+    QCOMPARE(readBack.completedSteps,uint(7));
+    QCOMPARE(readBack.time,checkpoint.time);
+    QCOMPARE(readBack.fixedTimeStep,checkpoint.fixedTimeStep);
+    QCOMPARE(readBack.q,checkpoint.q);
+    QCOMPARE(readBack.v,checkpoint.v);
+    QCOMPARE(readBack.a,checkpoint.a);
+    QCOMPARE(readBack.externalForce,checkpoint.externalForce);
+    QCOMPARE(readBack.cumulativeExternalWork,checkpoint.cumulativeExternalWork);
+    QCOMPARE(readBack.cumulativeDampingDissipation,checkpoint.cumulativeDampingDissipation);
+    QCOMPARE(readBack.initialMechanicalEnergy,checkpoint.initialMechanicalEnergy);
+    QVERIFY(readBack.matches(restored,dofs));
+}
+
+void TestProblemSetup::restartRejectsChangedMeshAndDofOrder()
+{
+    RModel model = makeRestartModel();
+    const auto dofs = restartDofs();
+    RStructuralDynamicsRestartData checkpoint;
+    checkpoint.available = true;
+    checkpoint.fixedTimeStep = 0.01;
+    checkpoint.meshNodeCount = model.getNNodes();
+    checkpoint.meshElementCount = model.getNElements();
+    checkpoint.physicalDofCount = uint(dofs.size());
+    checkpoint.meshFingerprint = RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+    checkpoint.dofFingerprint = RStructuralDynamicsRestartData::computeDofFingerprint(dofs);
+    checkpoint.q = {0.0};
+    checkpoint.v = {0.0};
+    checkpoint.a = {0.0};
+    checkpoint.externalForce = {0.0};
+    QVERIFY(checkpoint.matches(model,dofs));
+    model.getNode(1).scale(0.1);
+    model.getNode(1).scale(10.0);
+    QVERIFY(checkpoint.matches(model,dofs));
+    QVERIFY(!checkpoint.matches(model,{{1,RDofType::UX},{0,RDofType::UX}}));
+    model.getNode(1).setX(1.4);
+    QVERIFY(!checkpoint.matches(model,dofs));
+    checkpoint.q.push_back(1.0);
+    QVERIFY_EXCEPTION_THROWN(checkpoint.validate(),RError);
+}
+
+void TestProblemSetup::readsVersion136WithoutCheckpoint_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.6") << false;
+    QTest::newRow("binary-1.3.6") << true;
+}
+
+void TestProblemSetup::readsVersion136WithoutCheckpoint()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "old-136.bin" : "old-136.txt");
+    RProblemSetup source;
+    source.getStructuralDynamicsSetup().setEnabled(true);
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        if (binary)
+        {
+            RFileIO::writeBinary(file,source.getRestart());
+            RFileIO::writeBinary(file,source.getRadiationSetup());
+            RFileIO::writeBinary(file,source.getModalSetup());
+            RFileIO::writeBinary(file,source.getMeshSetup());
+            RFileIO::writeBinary(file,source.getAcousticSetup());
+            RFileIO::writeBinary(file,int(source.getMassMatrixType()));
+            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+            RFileIO::writeBinary(file,source.getStructuralDynamicsSetup());
+            RFileIO::writeBinary(file,source.getParallelExecutionConfig());
+        }
+        else
+        {
+            RFileIO::writeAscii(file,source.getRestart());
+            RFileIO::writeAscii(file,source.getRadiationSetup());
+            RFileIO::writeAscii(file,source.getModalSetup());
+            RFileIO::writeAscii(file,source.getMeshSetup());
+            RFileIO::writeAscii(file,source.getAcousticSetup());
+            RFileIO::writeAscii(file,int(source.getMassMatrixType()));
+            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+            RFileIO::writeAscii(file,source.getStructuralDynamicsSetup());
+            RFileIO::writeAscii(file,source.getParallelExecutionConfig());
+        }
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,6));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RProblemSetup restored;
+    restored.getStructuralDynamicsRestartData().available = true;
+    if (binary) RFileIO::readBinary(file,restored);
+    else RFileIO::readAscii(file,restored);
+    QVERIFY(restored.getStructuralDynamicsSetup().getEnabled());
+    QVERIFY(!restored.getStructuralDynamicsRestartData().available);
 }
 
 void TestProblemSetup::angularKinematicsDescriptors()
@@ -223,6 +382,20 @@ void TestProblemSetup::angularKinematicsDescriptors()
                                         R_VARIABLE_ANGULAR_ACCELERATION_Y,
                                         R_VARIABLE_ANGULAR_ACCELERATION_Z),
              RVariable::getUnits(R_VARIABLE_ANGULAR_ACCELERATION));
+}
+
+void TestProblemSetup::rotationalInitialConditions()
+{
+    QCOMPARE(int(R_INITIAL_CONDITION_ROTATION),int(R_INITIAL_CONDITION_CUSTOM)+1);
+    QCOMPARE(RInitialCondition::getTypeFromId("ic-rotation"),R_INITIAL_CONDITION_ROTATION);
+    QCOMPARE(RInitialCondition::getTypeFromId("ic-angular_velocity"),R_INITIAL_CONDITION_ANGULAR_VELOCITY);
+    QCOMPARE(RInitialCondition::getDefaultComponents(R_INITIAL_CONDITION_ROTATION),
+             (std::vector<RVariableType>{R_VARIABLE_ROTATION_X,R_VARIABLE_ROTATION_Y,R_VARIABLE_ROTATION_Z}));
+    QCOMPARE(RInitialCondition::getDefaultComponents(R_INITIAL_CONDITION_ANGULAR_VELOCITY),
+             (std::vector<RVariableType>{R_VARIABLE_ANGULAR_VELOCITY_X,R_VARIABLE_ANGULAR_VELOCITY_Y,
+                                         R_VARIABLE_ANGULAR_VELOCITY_Z}));
+    QCOMPARE(RInitialCondition::getProblemTypeMask(R_INITIAL_CONDITION_ROTATION) & R_PROBLEM_STRESS,
+             RProblemTypeMask(R_PROBLEM_STRESS));
 }
 
 static RModel makeInteractionModel()

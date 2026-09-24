@@ -33,7 +33,11 @@ const RInitialConditionDesc initialConditionDesc [] =
     { "ic-wave_displacement", "Wave displacement",
       R_PROBLEM_WAVE },
     { "ic-custom", "Custom",
-      R_PROBLEM_NONE }
+      R_PROBLEM_NONE },
+    { "ic-rotation", "Rotation",
+      R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL },
+    { "ic-angular_velocity", "Angular velocity",
+      R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL }
 };
 
 
@@ -186,6 +190,16 @@ std::vector<RVariableType> RInitialCondition::getDefaultComponents
             componentTypes.push_back (R_VARIABLE_WAVE_DISPLACEMENT);
             break;
         case R_INITIAL_CONDITION_CUSTOM:
+            break;
+        case R_INITIAL_CONDITION_ROTATION:
+            componentTypes.push_back (R_VARIABLE_ROTATION_X);
+            componentTypes.push_back (R_VARIABLE_ROTATION_Y);
+            componentTypes.push_back (R_VARIABLE_ROTATION_Z);
+            break;
+        case R_INITIAL_CONDITION_ANGULAR_VELOCITY:
+            componentTypes.push_back (R_VARIABLE_ANGULAR_VELOCITY_X);
+            componentTypes.push_back (R_VARIABLE_ANGULAR_VELOCITY_Y);
+            componentTypes.push_back (R_VARIABLE_ANGULAR_VELOCITY_Z);
             break;
         default:
             break;

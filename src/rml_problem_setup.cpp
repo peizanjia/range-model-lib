@@ -14,6 +14,7 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->massMatrixType = pProblemSetup->massMatrixType;
         this->structuralInteractionSetup = pProblemSetup->structuralInteractionSetup;
         this->structuralDynamicsSetup = pProblemSetup->structuralDynamicsSetup;
+        this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
 }
@@ -159,6 +160,22 @@ void RProblemSetup::setStructuralDynamicsSetup(const RStructuralDynamicsSetup &s
     this->structuralDynamicsSetup = setup;
 }
 
+const RStructuralDynamicsRestartData &RProblemSetup::getStructuralDynamicsRestartData() const
+{
+    return this->structuralDynamicsRestartData;
+}
+
+RStructuralDynamicsRestartData &RProblemSetup::getStructuralDynamicsRestartData()
+{
+    return this->structuralDynamicsRestartData;
+}
+
+void RProblemSetup::setStructuralDynamicsRestartData(const RStructuralDynamicsRestartData &data)
+{
+    data.validate();
+    this->structuralDynamicsRestartData = data;
+}
+
 const RParallelExecutionConfig &RProblemSetup::getParallelExecutionConfig() const
 {
     return this->parallelExecutionConfig;
@@ -189,6 +206,7 @@ QString RProblemSetup::toString() const
             + ", Sensors: " + QString::number(this->structuralInteractionSetup.getSensors().size())
             + ", Actuators: " + QString::number(this->structuralInteractionSetup.getActuators().size())
             + ", Structural dynamics: " + this->structuralDynamicsSetup.toString()
+            + ", Structural restart: " + QString(this->structuralDynamicsRestartData.available ? "Available" : "None")
             + ", Parallel execution: " + this->parallelExecutionConfig.toString()
             + " }";
 }

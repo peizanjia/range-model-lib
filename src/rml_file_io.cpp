@@ -2,6 +2,8 @@
 #include <rbl_logger.h>
 #include <rbl_utils.h>
 
+#include <utility>
+
 #include "rml_file_io.h"
 #include "rml_problem_setup.h"
 
@@ -4528,6 +4530,14 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
         problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
     }
+    if (inFile.getVersion() > RVersion(1,3,6))
+    {
+        RFileIO::readAscii(inFile,problemSetup.structuralDynamicsRestartData);
+    }
+    else
+    {
+        problemSetup.structuralDynamicsRestartData.clear();
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4562,6 +4572,14 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
     {
         problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
         problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
+    }
+    if (inFile.getVersion() > RVersion(1,3,6))
+    {
+        RFileIO::readBinary(inFile,problemSetup.structuralDynamicsRestartData);
+    }
+    else
+    {
+        problemSetup.structuralDynamicsRestartData.clear();
     }
 }
 
@@ -4608,6 +4626,11 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
         RFileIO::writeAscii(outFile,' ',false);
     }
     RFileIO::writeAscii(outFile,problemSetup.parallelExecutionConfig,addNewLine);
+    if (!addNewLine)
+    {
+        RFileIO::writeAscii(outFile,' ',false);
+    }
+    RFileIO::writeAscii(outFile,problemSetup.structuralDynamicsRestartData,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4621,6 +4644,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralInteractionSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsSetup);
     RFileIO::writeBinary(outFile,problemSetup.parallelExecutionConfig);
+    RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsRestartData);
 }
 
 
@@ -4745,6 +4769,138 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsSetup &se
     RFileIO::writeBinary(outFile,setup.getNewmarkBeta());
     RFileIO::writeBinary(outFile,uint(setup.getModalDampingRatios().size()));
     for (double ratio : setup.getModalDampingRatios()) RFileIO::writeBinary(outFile,ratio);
+}
+
+void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsRestartData &data)
+{
+    RStructuralDynamicsRestartData result;
+    RFileIO::readAscii(inFile,result.available);
+    if (result.available)
+    {
+        RFileIO::readAscii(inFile,result.completedSteps);
+        RFileIO::readAscii(inFile,result.time);
+        RFileIO::readAscii(inFile,result.fixedTimeStep);
+        RFileIO::readAscii(inFile,result.meshNodeCount);
+        RFileIO::readAscii(inFile,result.meshElementCount);
+        RFileIO::readAscii(inFile,result.physicalDofCount);
+        RFileIO::readAscii(inFile,result.meshFingerprint);
+        RFileIO::readAscii(inFile,result.dofFingerprint);
+        uint stateSize = 0;
+        RFileIO::readAscii(inFile,stateSize);
+        if (stateSize == 0 || stateSize > 20000000u || stateSize > result.physicalDofCount)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural restart state size (%u).",stateSize);
+        }
+        result.q.resize(stateSize);
+        result.v.resize(stateSize);
+        result.a.resize(stateSize);
+        result.externalForce.resize(stateSize);
+        for (double &value : result.q) RFileIO::readAscii(inFile,value);
+        for (double &value : result.v) RFileIO::readAscii(inFile,value);
+        for (double &value : result.a) RFileIO::readAscii(inFile,value);
+        for (double &value : result.externalForce) RFileIO::readAscii(inFile,value);
+        RFileIO::readAscii(inFile,result.cumulativeExternalWork);
+        RFileIO::readAscii(inFile,result.cumulativeDampingDissipation);
+        RFileIO::readAscii(inFile,result.initialMechanicalEnergy);
+    }
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralDynamicsRestartData &data)
+{
+    RStructuralDynamicsRestartData result;
+    RFileIO::readBinary(inFile,result.available);
+    if (result.available)
+    {
+        RFileIO::readBinary(inFile,result.completedSteps);
+        RFileIO::readBinary(inFile,result.time);
+        RFileIO::readBinary(inFile,result.fixedTimeStep);
+        RFileIO::readBinary(inFile,result.meshNodeCount);
+        RFileIO::readBinary(inFile,result.meshElementCount);
+        RFileIO::readBinary(inFile,result.physicalDofCount);
+        RFileIO::readBinary(inFile,result.meshFingerprint);
+        RFileIO::readBinary(inFile,result.dofFingerprint);
+        uint stateSize = 0;
+        RFileIO::readBinary(inFile,stateSize);
+        if (stateSize == 0 || stateSize > 20000000u || stateSize > result.physicalDofCount)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid structural restart state size (%u).",stateSize);
+        }
+        result.q.resize(stateSize);
+        result.v.resize(stateSize);
+        result.a.resize(stateSize);
+        result.externalForce.resize(stateSize);
+        for (double &value : result.q) RFileIO::readBinary(inFile,value);
+        for (double &value : result.v) RFileIO::readBinary(inFile,value);
+        for (double &value : result.a) RFileIO::readBinary(inFile,value);
+        for (double &value : result.externalForce) RFileIO::readBinary(inFile,value);
+        RFileIO::readBinary(inFile,result.cumulativeExternalWork);
+        RFileIO::readBinary(inFile,result.cumulativeDampingDissipation);
+        RFileIO::readBinary(inFile,result.initialMechanicalEnergy);
+    }
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsRestartData &data, bool addNewLine)
+{
+    data.validate();
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+    write(data.available);
+    if (!data.available) return;
+    write(data.completedSteps);
+    write(data.time);
+    write(data.fixedTimeStep);
+    write(data.meshNodeCount);
+    write(data.meshElementCount);
+    write(data.physicalDofCount);
+    write(data.meshFingerprint);
+    write(data.dofFingerprint);
+    write(uint(data.q.size()));
+    for (double value : data.q) write(value);
+    for (double value : data.v) write(value);
+    for (double value : data.a) write(value);
+    for (double value : data.externalForce) write(value);
+    write(data.cumulativeExternalWork);
+    write(data.cumulativeDampingDissipation);
+    write(data.initialMechanicalEnergy);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartData &data)
+{
+    data.validate();
+    RFileIO::writeBinary(outFile,data.available);
+    if (!data.available) return;
+    RFileIO::writeBinary(outFile,data.completedSteps);
+    RFileIO::writeBinary(outFile,data.time);
+    RFileIO::writeBinary(outFile,data.fixedTimeStep);
+    RFileIO::writeBinary(outFile,data.meshNodeCount);
+    RFileIO::writeBinary(outFile,data.meshElementCount);
+    RFileIO::writeBinary(outFile,data.physicalDofCount);
+    RFileIO::writeBinary(outFile,data.meshFingerprint);
+    RFileIO::writeBinary(outFile,data.dofFingerprint);
+    RFileIO::writeBinary(outFile,uint(data.q.size()));
+    for (double value : data.q) RFileIO::writeBinary(outFile,value);
+    for (double value : data.v) RFileIO::writeBinary(outFile,value);
+    for (double value : data.a) RFileIO::writeBinary(outFile,value);
+    for (double value : data.externalForce) RFileIO::writeBinary(outFile,value);
+    RFileIO::writeBinary(outFile,data.cumulativeExternalWork);
+    RFileIO::writeBinary(outFile,data.cumulativeDampingDissipation);
+    RFileIO::writeBinary(outFile,data.initialMechanicalEnergy);
 }
 
 void RFileIO::readAscii(RFile &inFile, RParallelExecutionConfig &config)

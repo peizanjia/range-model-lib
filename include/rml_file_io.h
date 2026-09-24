@@ -42,6 +42,7 @@
 #include "rml_stream_line.h"
 #include "rml_structural_interaction.h"
 #include "rml_structural_dynamics_setup.h"
+#include "rml_structural_dynamics_restart_data.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -807,6 +808,11 @@ class RFileIO
         static void readBinary(RFile &inFile, RStructuralDynamicsSetup &setup);
         static void writeAscii(RSaveFile &outFile, const RStructuralDynamicsSetup &setup, bool addNewLine = true);
         static void writeBinary(RSaveFile &outFile, const RStructuralDynamicsSetup &setup);
+
+        static void readAscii(RFile &inFile, RStructuralDynamicsRestartData &data);
+        static void readBinary(RFile &inFile, RStructuralDynamicsRestartData &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralDynamicsRestartData &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralDynamicsRestartData &data);
 
         static void readAscii(RFile &inFile, RParallelExecutionConfig &config);
         static void readBinary(RFile &inFile, RParallelExecutionConfig &config);

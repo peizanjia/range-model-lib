@@ -24,6 +24,9 @@ typedef enum _RInitialConditionType
     R_INITIAL_CONDITION_VELOCITY_POTENTIAL_VELOCITY,
     R_INITIAL_CONDITION_WAVE_DISPLACEMENT,
     R_INITIAL_CONDITION_CUSTOM,
+    //! Appended to preserve serialized IDs of all legacy initial conditions.
+    R_INITIAL_CONDITION_ROTATION,
+    R_INITIAL_CONDITION_ANGULAR_VELOCITY,
     R_INITIAL_CONDITION_N_TYPES
 } RInitialConditionType;
 
