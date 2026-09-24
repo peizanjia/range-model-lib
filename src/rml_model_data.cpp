@@ -26,6 +26,10 @@ void RModelData::_init(const RModelData *pModelData)
     {
         this->selected = pModelData->selected;
     }
+    else
+    {
+        this->selected = false;
+    }
 }
 
 bool RModelData::getSelected(void) const

@@ -4754,6 +4754,15 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralDynamicsSetup &set
     write(setup.getNewmarkGamma());
     write(setup.getNewmarkBeta());
     write(uint(setup.getModalDampingRatios().size()));
+    // Modal ratios are replayed by index. Preserve their exact double values
+    // without changing the legacy precision of the surrounding setup fields.
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
     for (double ratio : setup.getModalDampingRatios()) write(ratio);
 }
 

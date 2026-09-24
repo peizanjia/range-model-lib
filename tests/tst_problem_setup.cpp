@@ -29,6 +29,7 @@ private slots:
     void rejectsInvalidMassMatrixType();
     void modelRoundTrip_data();
     void modelRoundTrip();
+    void modalDampingAsciiPrecisionRoundTrip();
     void resultVariableWithWhitespaceRoundTrip_data();
     void resultVariableWithWhitespaceRoundTrip();
     void prescribedMotionHermiteAndValidation();
@@ -57,6 +58,12 @@ private slots:
 
 void TestProblemSetup::defaultsAndCopy()
 {
+    RModelData modelData;
+    QVERIFY(!modelData.getSelected());
+    modelData.setSelected(true);
+    const RModelData copiedModelData(modelData);
+    QVERIFY(copiedModelData.getSelected());
+
     RProblemSetup setup;
     QCOMPARE(setup.getMassMatrixType(),RMassMatrixType::Consistent);
 
@@ -160,6 +167,43 @@ void TestProblemSetup::modelRoundTrip()
     QCOMPARE(restoredParallel.getMode(),RParallelExecutionMode::FixedThreads);
     QCOMPARE(restoredParallel.getRequestedThreads(),uint(4));
     QVERIFY(!restoredParallel.getDeterministicReduction());
+}
+
+void TestProblemSetup::modalDampingAsciiPrecisionRoundTrip()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const std::vector<double> ratios = {0.05,0.05000000000000001,
+                                         0.05000000000000002};
+    QVERIFY(ratios[0] != ratios[1]);
+    QVERIFY(ratios[1] != ratios[2]);
+
+    RModel source;
+    source.getProblemSetup().getStructuralDynamicsSetup().setModalDampingRatios(ratios);
+    const QString fileName = directory.filePath(QStringLiteral("precise-ratios.ram"));
+    RModel restored;
+    try
+    {
+        QCOMPARE(source.write(fileName,false),fileName);
+        restored.read(fileName);
+    }
+    catch (const RError &error)
+    {
+        QFAIL(qPrintable(QString("Modal damping ASCII round trip failed: %1")
+                         .arg(error.getMessage())));
+    }
+    QCOMPARE(restored.getProblemSetup().getStructuralDynamicsSetup()
+                 .getModalDampingRatios(),ratios);
+
+    // The precision change must be scoped to this field: other writers that
+    // reuse the stream must retain their caller-selected precision.
+    const QString streamFile = directory.filePath(QStringLiteral("precision-scope.txt"));
+    RSaveFile file(streamFile,RSaveFile::ASCII);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.getTextStream().setRealNumberPrecision(9);
+    RFileIO::writeAscii(file,source.getProblemSetup().getStructuralDynamicsSetup());
+    QCOMPARE(file.getTextStream().realNumberPrecision(),9);
+    QVERIFY(file.commit());
 }
 
 void TestProblemSetup::resultVariableWithWhitespaceRoundTrip_data()
