@@ -5213,6 +5213,15 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralInteractionSetup &
         writeString(actuator.unit); RFileIO::writeAscii(outFile,actuator.minimum); RFileIO::writeAscii(outFile,actuator.maximum); RFileIO::writeAscii(outFile,actuator.rateLimit);
     }
     RFileIO::writeAscii(outFile,uint(setup.prescribedMotions.size()));
+    // Motion knots define the interpolated trajectory, so preserve every double
+    // across ASCII save/restart without changing legacy interaction fields.
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
     std::set<std::pair<uint,int>> motionTargets;
     std::set<QString> motionIds;
     for (const RStructuralPrescribedMotion &motion : setup.prescribedMotions)

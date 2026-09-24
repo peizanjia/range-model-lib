@@ -34,6 +34,7 @@ private slots:
     void prescribedMotionHermiteAndValidation();
     void prescribedMotionRoundTrip_data();
     void prescribedMotionRoundTrip();
+    void prescribedMotionAsciiPrecisionRoundTrip();
     void readsVersion138WithoutPrescribedMotion_data();
     void readsVersion138WithoutPrescribedMotion();
     void structuralCatalogAndCouplings();
@@ -294,6 +295,45 @@ void TestProblemSetup::prescribedMotionRoundTrip()
     QCOMPARE(motions[0].evaluate(0.25).displacement,0.0625);
     QCOMPARE(motions[0].evaluate(0.25).velocity,0.5);
     QCOMPARE(motions[0].evaluate(0.25).acceleration,2.0);
+}
+
+void TestProblemSetup::prescribedMotionAsciiPrecisionRoundTrip()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    RModel source;
+    source.setNNodes(1);
+    RStructuralPrescribedMotion motion;
+    motion.id = "precision";
+    motion.target = {0,RDofType::UX};
+    motion.knots = {
+        {0.12345678901234567,0.98765432109876543,1.4142135623730951,-0.33333333333333331},
+        {1.2345678901234567,-0.27182818284590452,2.7182818284590451,3.1415926535897931}
+    };
+    source.getProblemSetup().getStructuralInteractionSetup().getPrescribedMotions().push_back(motion);
+
+    const QString path = directory.filePath("precise-motion.ram");
+    RModel restored;
+    try
+    {
+        QCOMPARE(source.write(path,false),path);
+        restored.read(path);
+    }
+    catch (const RError &error)
+    {
+        QFAIL(qPrintable(QString("Precise motion ASCII round trip failed: %1")
+                         .arg(error.getMessage())));
+    }
+    const auto &readMotions = restored.getProblemSetup().getStructuralInteractionSetup().getPrescribedMotions();
+    QCOMPARE(readMotions.size(),std::size_t(1));
+    QCOMPARE(readMotions[0].knots.size(),motion.knots.size());
+    for (std::size_t i=0;i<motion.knots.size();i++)
+    {
+        QCOMPARE(readMotions[0].knots[i].time,motion.knots[i].time);
+        QCOMPARE(readMotions[0].knots[i].displacement,motion.knots[i].displacement);
+        QCOMPARE(readMotions[0].knots[i].velocity,motion.knots[i].velocity);
+        QCOMPARE(readMotions[0].knots[i].acceleration,motion.knots[i].acceleration);
+    }
 }
 
 void TestProblemSetup::readsVersion138WithoutPrescribedMotion_data()
