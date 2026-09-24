@@ -1,7 +1,10 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <limits>
 #include <set>
+
+#include <rbl_error.h>
 
 #include "rml_element_group.h"
 #include "rml_model.h"
@@ -144,6 +147,95 @@ const std::vector<RStructuralDiagnostic> &RStructuralValidationReport::getDiagno
     return diagnostics;
 }
 
+void RStructuralPrescribedMotion::validate() const
+{
+    if (id.trimmed().isEmpty() || id.contains(QLatin1Char('"')) ||
+        id.contains(QLatin1Char('\n')) || id.contains(QLatin1Char('\r')))
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion requires a nonempty stable ID without quotes or line breaks.");
+    }
+    if (!isMechanicalDof(target.dof))
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion '%s' targets a non-mechanical DOF.",qPrintable(id));
+    }
+    if (knots.size() < 2)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion '%s' requires at least two time knots.",qPrintable(id));
+    }
+    double previousTime = 0.0;
+    for (std::size_t i=0;i<knots.size();i++)
+    {
+        const RStructuralMotionKnot &knot = knots[i];
+        const double h = i > 0 ? knot.time-previousTime : 1.0;
+        if (!std::isfinite(knot.time) || !std::isfinite(knot.displacement) ||
+            !std::isfinite(knot.velocity) || !std::isfinite(knot.acceleration) ||
+            (i > 0 && (!std::isfinite(h) || h <= 0.0 ||
+                       !std::isfinite(h*h) || !std::isfinite(1.0/(h*h)))))
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                         "Prescribed motion '%s' has non-finite values or non-increasing times.",qPrintable(id));
+        }
+        previousTime = knot.time;
+    }
+}
+
+RStructuralMotionState RStructuralPrescribedMotion::evaluate(double time) const
+{
+    validate();
+    const double firstTime = knots.front().time;
+    const double lastTime = knots.back().time;
+    if (!std::isfinite(time))
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion '%s' is evaluated outside its time domain.",qPrintable(id));
+    }
+    // Accept only floating-point rounding at the endpoints, not extrapolation.
+    const double startTolerance = 16.0*std::numeric_limits<double>::epsilon()*
+        std::max({1.0,std::fabs(time),std::fabs(firstTime)});
+    const double endTolerance = 16.0*std::numeric_limits<double>::epsilon()*
+        std::max({1.0,std::fabs(time),std::fabs(lastTime)});
+    if (time < firstTime-startTolerance || time > lastTime+endTolerance)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion '%s' is evaluated outside its time domain.",qPrintable(id));
+    }
+    time = std::max(firstTime,std::min(time,lastTime));
+    if (time == lastTime)
+    {
+        const auto &last = knots.back();
+        return {last.displacement,last.velocity,last.acceleration};
+    }
+    const auto upper = std::upper_bound(knots.begin(),knots.end(),time,
+        [](double value, const RStructuralMotionKnot &knot) { return value < knot.time; });
+    const auto &left = *(upper-1);
+    const auto &right = *upper;
+    const double h = right.time-left.time;
+    const double s = (time-left.time)/h;
+    const double c0 = left.displacement;
+    const double c1 = h*left.velocity;
+    const double c2 = 0.5*h*h*left.acceleration;
+    const double dg = right.displacement-c0-c1-c2;
+    const double dv = h*right.velocity-c1-2.0*c2;
+    const double da = h*h*right.acceleration-2.0*c2;
+    const double c3 = 10.0*dg-4.0*dv+0.5*da;
+    const double c4 = -15.0*dg+7.0*dv-da;
+    const double c5 = 6.0*dg-3.0*dv+0.5*da;
+    const RStructuralMotionState state{
+        c0+s*(c1+s*(c2+s*(c3+s*(c4+s*c5)))),
+        (c1+s*(2.0*c2+s*(3.0*c3+s*(4.0*c4+s*5.0*c5))))/h,
+        (2.0*c2+s*(6.0*c3+s*(12.0*c4+s*20.0*c5)))/(h*h)};
+    if (!std::isfinite(state.displacement) || !std::isfinite(state.velocity) ||
+        !std::isfinite(state.acceleration))
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Prescribed motion '%s' overflows during evaluation.",qPrintable(id));
+    }
+    return state;
+}
+
 const std::vector<RLinearConstraint> &RStructuralInteractionSetup::getLinearConstraints() const { return linearConstraints; }
 std::vector<RLinearConstraint> &RStructuralInteractionSetup::getLinearConstraints() { return linearConstraints; }
 const std::vector<RStructuralCoupling> &RStructuralInteractionSetup::getCouplings() const { return couplings; }
@@ -152,6 +244,8 @@ const std::vector<RStructuralSensor> &RStructuralInteractionSetup::getSensors() 
 std::vector<RStructuralSensor> &RStructuralInteractionSetup::getSensors() { return sensors; }
 const std::vector<RStructuralActuator> &RStructuralInteractionSetup::getActuators() const { return actuators; }
 std::vector<RStructuralActuator> &RStructuralInteractionSetup::getActuators() { return actuators; }
+const std::vector<RStructuralPrescribedMotion> &RStructuralInteractionSetup::getPrescribedMotions() const { return prescribedMotions; }
+std::vector<RStructuralPrescribedMotion> &RStructuralInteractionSetup::getPrescribedMotions() { return prescribedMotions; }
 
 std::vector<uint> RStructuralInteractionSetup::resolveNamedSetNodes(const RModel &model,
                                                                     const QString &setName,
@@ -327,6 +421,30 @@ RStructuralValidationReport RStructuralInteractionSetup::validate(const RModel &
     for (const RStructuralCoupling &coupling : couplings) checkId(coupling.id,"Coupling");
     for (const RStructuralSensor &sensor : sensors) checkId(sensor.id,"Sensor");
     for (const RStructuralActuator &actuator : actuators) checkId(actuator.id,"Actuator");
+    for (const RStructuralPrescribedMotion &motion : prescribedMotions) checkId(motion.id,"Prescribed motion");
+
+    std::set<std::pair<uint,int>> motionTargets;
+    for (const RStructuralPrescribedMotion &motion : prescribedMotions)
+    {
+        try
+        {
+            motion.validate();
+        }
+        catch (const RError &error)
+        {
+            report.add(RStructuralDiagnosticSeverity::Error,"invalid-motion",motion.id,error.getMessage());
+        }
+        if (motion.target.nodeId >= model.getNNodes())
+        {
+            report.add(RStructuralDiagnosticSeverity::Error,"invalid-motion-node",motion.id,
+                       "Prescribed motion target node does not exist.");
+        }
+        if (!motionTargets.insert({motion.target.nodeId,int(motion.target.dof)}).second)
+        {
+            report.add(RStructuralDiagnosticSeverity::Error,"duplicate-motion-target",motion.id,
+                       "Only one prescribed motion may own a nodal DOF.");
+        }
+    }
 
     for (const RStructuralCoupling &coupling : couplings)
     {

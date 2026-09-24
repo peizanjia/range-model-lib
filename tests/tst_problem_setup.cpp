@@ -2,9 +2,23 @@
 #include <QTemporaryDir>
 #include <QDir>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "rml_model.h"
 #include "rml_file_io.h"
 #include "rml_file_utils.h"
+
+static void writeLegacyEmptyInteractionSetup(RSaveFile &file, bool binary)
+{
+    // Through 1.3.8 the interaction record had exactly four vector counts.
+    for (int i=0;i<4;i++)
+    {
+        if (binary) RFileIO::writeBinary(file,0u);
+        else RFileIO::writeAscii(file,0u);
+    }
+}
 
 class TestProblemSetup : public QObject
 {
@@ -17,6 +31,11 @@ private slots:
     void modelRoundTrip();
     void resultVariableWithWhitespaceRoundTrip_data();
     void resultVariableWithWhitespaceRoundTrip();
+    void prescribedMotionHermiteAndValidation();
+    void prescribedMotionRoundTrip_data();
+    void prescribedMotionRoundTrip();
+    void readsVersion138WithoutPrescribedMotion_data();
+    void readsVersion138WithoutPrescribedMotion();
     void structuralCatalogAndCouplings();
     void structuralValidation();
     void dynamicsAndParallelValidation();
@@ -181,6 +200,145 @@ void TestProblemSetup::resultVariableWithWhitespaceRoundTrip()
     QCOMPARE(restored.getVariable(0).getNVectors(),1u);
 }
 
+void TestProblemSetup::prescribedMotionHermiteAndValidation()
+{
+    RStructuralPrescribedMotion motion;
+    motion.id = "base-x";
+    motion.target = {0,RDofType::UX};
+    // Exact quintic g=t^5, v=5t^4, a=20t^3.
+    motion.knots = {{0.0,0.0,0.0,0.0},{1.0,1.0,5.0,20.0}};
+    motion.validate();
+    const RStructuralMotionState middle = motion.evaluate(0.5);
+    QCOMPARE(middle.displacement,0.03125);
+    QCOMPARE(middle.velocity,0.3125);
+    QCOMPARE(middle.acceleration,2.5);
+    QCOMPARE(motion.evaluate(0.0).displacement,0.0);
+    QCOMPARE(motion.evaluate(1.0).acceleration,20.0);
+    QCOMPARE(motion.evaluate(std::nextafter(1.0,std::numeric_limits<double>::infinity())).displacement,1.0);
+    QVERIFY_EXCEPTION_THROWN(motion.evaluate(-0.001),RError);
+    QVERIFY_EXCEPTION_THROWN(motion.evaluate(1.001),RError);
+
+    RStructuralPrescribedMotion invalid = motion;
+    invalid.knots[1].time = invalid.knots[0].time;
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = motion;
+    invalid.knots[1].acceleration = std::numeric_limits<double>::infinity();
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = motion;
+    invalid.target.dof = RDofType::Temperature;
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = motion;
+    invalid.knots[1].time = 1.0e-200;
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = motion;
+    invalid.id.clear();
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+
+    RModel model;
+    model.setNNodes(1);
+    auto &motions = model.getProblemSetup().getStructuralInteractionSetup().getPrescribedMotions();
+    motions.push_back(motion);
+    RStructuralPrescribedMotion duplicate = motion;
+    duplicate.id = "base-x-duplicate";
+    motions.push_back(duplicate);
+    const auto report = model.getProblemSetup().getStructuralInteractionSetup().validate(model);
+    QVERIFY(report.hasErrors());
+    QVERIFY(std::any_of(report.getDiagnostics().begin(),report.getDiagnostics().end(),
+                        [](const RStructuralDiagnostic &diagnostic)
+                        { return diagnostic.code == "duplicate-motion-target"; }));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QVERIFY_EXCEPTION_THROWN(model.write(directory.filePath("duplicate-motion.ram"),false),RError);
+}
+
+void TestProblemSetup::prescribedMotionRoundTrip_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.9") << false;
+    QTest::newRow("binary-1.3.9") << true;
+}
+
+void TestProblemSetup::prescribedMotionRoundTrip()
+{
+    QFETCH(bool,binary);
+    QCOMPARE(RModel::version.toString(),QString("1.3.9"));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    RModel source;
+    source.setNNodes(2);
+    RStructuralPrescribedMotion motion;
+    motion.id = "base X";
+    motion.target = {1,RDofType::UX};
+    motion.knots = {{0.0,0.0,0.0,2.0},{0.5,0.25,1.0,2.0},{1.0,1.0,2.0,2.0}};
+    source.getProblemSetup().getStructuralInteractionSetup().getPrescribedMotions().push_back(motion);
+
+    const QString fileName = directory.filePath(
+        "motion." + RModel::getDefaultFileExtension(binary));
+    RModel restored;
+    try
+    {
+        QCOMPARE(source.write(fileName,false),fileName);
+        restored.read(fileName);
+    }
+    catch (const RError &error)
+    {
+        QFAIL(qPrintable(QString("Prescribed motion round trip failed: %1")
+                         .arg(error.getMessage())));
+    }
+    const auto &motions = restored.getProblemSetup().getStructuralInteractionSetup().getPrescribedMotions();
+    QCOMPARE(motions.size(),std::size_t(1));
+    QCOMPARE(motions[0].id,QString("base X"));
+    QCOMPARE(motions[0].target.nodeId,1u);
+    QCOMPARE(motions[0].target.dof,RDofType::UX);
+    QCOMPARE(motions[0].knots.size(),std::size_t(3));
+    QCOMPARE(motions[0].evaluate(0.25).displacement,0.0625);
+    QCOMPARE(motions[0].evaluate(0.25).velocity,0.5);
+    QCOMPARE(motions[0].evaluate(0.25).acceleration,2.0);
+}
+
+void TestProblemSetup::readsVersion138WithoutPrescribedMotion_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.8") << false;
+    QTest::newRow("binary-1.3.8") << true;
+}
+
+void TestProblemSetup::readsVersion138WithoutPrescribedMotion()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "old-interaction.bin" : "old-interaction.txt");
+    {
+        RSaveFile file(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        // Version 1.3.8 contains four empty interaction vectors and no motion count.
+        for (int i=0;i<4;i++)
+        {
+            if (binary) RFileIO::writeBinary(file,0u);
+            else RFileIO::writeAscii(file,0u);
+        }
+        if (binary) RFileIO::writeBinary(file,12345);
+        else RFileIO::writeAscii(file,12345);
+        QVERIFY(file.commit());
+    }
+    RFile file(path,binary ? RFile::BINARY : RFile::ASCII);
+    file.setVersion(RVersion(1,3,8));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    RStructuralInteractionSetup setup;
+    RStructuralPrescribedMotion stale;
+    stale.id = "stale";
+    stale.knots = {{0.0,0.0,0.0,0.0},{1.0,0.0,0.0,0.0}};
+    setup.getPrescribedMotions().push_back(stale);
+    if (binary) RFileIO::readBinary(file,setup);
+    else RFileIO::readAscii(file,setup);
+    QVERIFY(setup.getPrescribedMotions().empty());
+    int sentinel = 0;
+    if (binary) RFileIO::readBinary(file,sentinel);
+    else RFileIO::readAscii(file,sentinel);
+    QCOMPARE(sentinel,12345);
+}
+
 void TestProblemSetup::dynamicsAndParallelValidation()
 {
     RStructuralDynamicsSetup dynamics;
@@ -235,7 +393,7 @@ void TestProblemSetup::readsLegacyProblemSetup()
             RFileIO::writeBinary(file,source.getMeshSetup());
             RFileIO::writeBinary(file,source.getAcousticSetup());
             RFileIO::writeBinary(file,int(source.getMassMatrixType()));
-            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,true);
         }
         else
         {
@@ -245,7 +403,7 @@ void TestProblemSetup::readsLegacyProblemSetup()
             RFileIO::writeAscii(file,source.getMeshSetup());
             RFileIO::writeAscii(file,source.getAcousticSetup());
             RFileIO::writeAscii(file,int(source.getMassMatrixType()));
-            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,false);
         }
         QVERIFY(file.commit());
     }
@@ -390,7 +548,7 @@ void TestProblemSetup::readsVersion137ButDisablesUnboundCheckpoint()
             RFileIO::writeBinary(file,source.getMeshSetup());
             RFileIO::writeBinary(file,source.getAcousticSetup());
             RFileIO::writeBinary(file,int(source.getMassMatrixType()));
-            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,true);
             RFileIO::writeBinary(file,source.getStructuralDynamicsSetup());
             RFileIO::writeBinary(file,source.getParallelExecutionConfig());
             RFileIO::writeBinary(file,true);
@@ -414,7 +572,7 @@ void TestProblemSetup::readsVersion137ButDisablesUnboundCheckpoint()
             RFileIO::writeAscii(file,source.getMeshSetup());
             RFileIO::writeAscii(file,source.getAcousticSetup());
             RFileIO::writeAscii(file,int(source.getMassMatrixType()));
-            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,false);
             RFileIO::writeAscii(file,source.getStructuralDynamicsSetup());
             RFileIO::writeAscii(file,source.getParallelExecutionConfig());
             RFileIO::writeAscii(file,true);
@@ -468,7 +626,7 @@ void TestProblemSetup::readsVersion136WithoutCheckpoint()
             RFileIO::writeBinary(file,source.getMeshSetup());
             RFileIO::writeBinary(file,source.getAcousticSetup());
             RFileIO::writeBinary(file,int(source.getMassMatrixType()));
-            RFileIO::writeBinary(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,true);
             RFileIO::writeBinary(file,source.getStructuralDynamicsSetup());
             RFileIO::writeBinary(file,source.getParallelExecutionConfig());
         }
@@ -480,7 +638,7 @@ void TestProblemSetup::readsVersion136WithoutCheckpoint()
             RFileIO::writeAscii(file,source.getMeshSetup());
             RFileIO::writeAscii(file,source.getAcousticSetup());
             RFileIO::writeAscii(file,int(source.getMassMatrixType()));
-            RFileIO::writeAscii(file,source.getStructuralInteractionSetup());
+            writeLegacyEmptyInteractionSetup(file,false);
             RFileIO::writeAscii(file,source.getStructuralDynamicsSetup());
             RFileIO::writeAscii(file,source.getParallelExecutionConfig());
         }

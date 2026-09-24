@@ -3,6 +3,7 @@
 #include <rbl_utils.h>
 
 #include <utility>
+#include <set>
 
 #include "rml_file_io.h"
 #include "rml_problem_setup.h"
@@ -5040,6 +5041,39 @@ void RFileIO::readAscii(RFile &inFile, RStructuralInteractionSetup &setup)
         RFileIO::readAscii(inFile,actuator.direction); RFileIO::readAscii(inFile,actuator.unit);
         RFileIO::readAscii(inFile,actuator.minimum); RFileIO::readAscii(inFile,actuator.maximum); RFileIO::readAscii(inFile,actuator.rateLimit);
     }
+    setup.prescribedMotions.clear();
+    if (inFile.getVersion() > RVersion(1,3,8))
+    {
+        RFileIO::readAscii(inFile,count);
+        setup.prescribedMotions.resize(count);
+        std::set<std::pair<uint,int>> targets;
+        std::set<QString> ids;
+        for (RStructuralPrescribedMotion &motion : setup.prescribedMotions)
+        {
+            int dof = 0;
+            uint nKnots = 0;
+            RFileIO::readAscii(inFile,motion.id);
+            RFileIO::readAscii(inFile,motion.target.nodeId);
+            RFileIO::readAscii(inFile,dof);
+            motion.target.dof = static_cast<RDofType>(dof);
+            RFileIO::readAscii(inFile,nKnots);
+            motion.knots.resize(nKnots);
+            for (RStructuralMotionKnot &knot : motion.knots)
+            {
+                RFileIO::readAscii(inFile,knot.time);
+                RFileIO::readAscii(inFile,knot.displacement);
+                RFileIO::readAscii(inFile,knot.velocity);
+                RFileIO::readAscii(inFile,knot.acceleration);
+            }
+            motion.validate();
+            if (!ids.insert(motion.id).second ||
+                !targets.insert({motion.target.nodeId,dof}).second)
+            {
+                throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                             "Duplicate prescribed motion ID or nodal DOF in model file.");
+            }
+        }
+    }
 }
 
 void RFileIO::readBinary(RFile &inFile, RStructuralInteractionSetup &setup)
@@ -5096,6 +5130,39 @@ void RFileIO::readBinary(RFile &inFile, RStructuralInteractionSetup &setup)
         RFileIO::readBinary(inFile,actuator.direction); RFileIO::readBinary(inFile,actuator.unit);
         RFileIO::readBinary(inFile,actuator.minimum); RFileIO::readBinary(inFile,actuator.maximum); RFileIO::readBinary(inFile,actuator.rateLimit);
     }
+    setup.prescribedMotions.clear();
+    if (inFile.getVersion() > RVersion(1,3,8))
+    {
+        RFileIO::readBinary(inFile,count);
+        setup.prescribedMotions.resize(count);
+        std::set<std::pair<uint,int>> targets;
+        std::set<QString> ids;
+        for (RStructuralPrescribedMotion &motion : setup.prescribedMotions)
+        {
+            int dof = 0;
+            uint nKnots = 0;
+            RFileIO::readBinary(inFile,motion.id);
+            RFileIO::readBinary(inFile,motion.target.nodeId);
+            RFileIO::readBinary(inFile,dof);
+            motion.target.dof = static_cast<RDofType>(dof);
+            RFileIO::readBinary(inFile,nKnots);
+            motion.knots.resize(nKnots);
+            for (RStructuralMotionKnot &knot : motion.knots)
+            {
+                RFileIO::readBinary(inFile,knot.time);
+                RFileIO::readBinary(inFile,knot.displacement);
+                RFileIO::readBinary(inFile,knot.velocity);
+                RFileIO::readBinary(inFile,knot.acceleration);
+            }
+            motion.validate();
+            if (!ids.insert(motion.id).second ||
+                !targets.insert({motion.target.nodeId,dof}).second)
+            {
+                throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                             "Duplicate prescribed motion ID or nodal DOF in model file.");
+            }
+        }
+    }
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralInteractionSetup &setup, bool)
@@ -5145,6 +5212,30 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralInteractionSetup &
         RFileIO::writeAscii(outFile,int(actuator.variable)); RFileIO::writeAscii(outFile,int(actuator.frame)); RFileIO::writeAscii(outFile,actuator.direction);
         writeString(actuator.unit); RFileIO::writeAscii(outFile,actuator.minimum); RFileIO::writeAscii(outFile,actuator.maximum); RFileIO::writeAscii(outFile,actuator.rateLimit);
     }
+    RFileIO::writeAscii(outFile,uint(setup.prescribedMotions.size()));
+    std::set<std::pair<uint,int>> motionTargets;
+    std::set<QString> motionIds;
+    for (const RStructuralPrescribedMotion &motion : setup.prescribedMotions)
+    {
+        motion.validate();
+        if (!motionIds.insert(motion.id).second ||
+            !motionTargets.insert({motion.target.nodeId,int(motion.target.dof)}).second)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                         "Duplicate prescribed motion ID or nodal DOF.");
+        }
+        writeString(motion.id);
+        RFileIO::writeAscii(outFile,motion.target.nodeId);
+        RFileIO::writeAscii(outFile,int(motion.target.dof));
+        RFileIO::writeAscii(outFile,uint(motion.knots.size()));
+        for (const RStructuralMotionKnot &knot : motion.knots)
+        {
+            RFileIO::writeAscii(outFile,knot.time);
+            RFileIO::writeAscii(outFile,knot.displacement);
+            RFileIO::writeAscii(outFile,knot.velocity);
+            RFileIO::writeAscii(outFile,knot.acceleration);
+        }
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralInteractionSetup &setup)
@@ -5186,6 +5277,30 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralInteractionSetup 
         RFileIO::writeBinary(outFile,actuator.id); RFileIO::writeBinary(outFile,actuator.name); RFileIO::writeBinary(outFile,int(actuator.type)); writeTarget(actuator.target);
         RFileIO::writeBinary(outFile,int(actuator.variable)); RFileIO::writeBinary(outFile,int(actuator.frame)); RFileIO::writeBinary(outFile,actuator.direction);
         RFileIO::writeBinary(outFile,actuator.unit); RFileIO::writeBinary(outFile,actuator.minimum); RFileIO::writeBinary(outFile,actuator.maximum); RFileIO::writeBinary(outFile,actuator.rateLimit);
+    }
+    RFileIO::writeBinary(outFile,uint(setup.prescribedMotions.size()));
+    std::set<std::pair<uint,int>> motionTargets;
+    std::set<QString> motionIds;
+    for (const RStructuralPrescribedMotion &motion : setup.prescribedMotions)
+    {
+        motion.validate();
+        if (!motionIds.insert(motion.id).second ||
+            !motionTargets.insert({motion.target.nodeId,int(motion.target.dof)}).second)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                         "Duplicate prescribed motion ID or nodal DOF.");
+        }
+        RFileIO::writeBinary(outFile,motion.id);
+        RFileIO::writeBinary(outFile,motion.target.nodeId);
+        RFileIO::writeBinary(outFile,int(motion.target.dof));
+        RFileIO::writeBinary(outFile,uint(motion.knots.size()));
+        for (const RStructuralMotionKnot &knot : motion.knots)
+        {
+            RFileIO::writeBinary(outFile,knot.time);
+            RFileIO::writeBinary(outFile,knot.displacement);
+            RFileIO::writeBinary(outFile,knot.velocity);
+            RFileIO::writeBinary(outFile,knot.acceleration);
+        }
     }
 }
 

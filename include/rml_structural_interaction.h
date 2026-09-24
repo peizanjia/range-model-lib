@@ -45,6 +45,36 @@ struct RStructuralDofRef
     RDofType dof = RDofType::UX;
 };
 
+//! Physical kinematics at one time knot (m or rad, per second, per second squared).
+struct RStructuralMotionKnot
+{
+    double time = 0.0;
+    double displacement = 0.0;
+    double velocity = 0.0;
+    double acceleration = 0.0;
+};
+
+struct RStructuralMotionState
+{
+    double displacement = 0.0;
+    double velocity = 0.0;
+    double acceleration = 0.0;
+};
+
+//! One prescribed nodal DOF. Each interval uses a C2 quintic Hermite curve.
+//! The existing displacement/rotation boundary condition defines the held DOF;
+//! this record owns its time-varying value and both physical derivatives.
+struct RStructuralPrescribedMotion
+{
+    QString id;
+    RStructuralDofRef target;
+    std::vector<RStructuralMotionKnot> knots;
+
+    void validate() const;
+    //! No extrapolation: evaluation outside the knot domain is invalid.
+    RStructuralMotionState evaluate(double time) const;
+};
+
 struct RLinearConstraintTerm
 {
     RStructuralDofRef reference;
@@ -175,6 +205,7 @@ class RStructuralInteractionSetup
         std::vector<RStructuralCoupling> couplings;
         std::vector<RStructuralSensor> sensors;
         std::vector<RStructuralActuator> actuators;
+        std::vector<RStructuralPrescribedMotion> prescribedMotions;
 
     public:
         const std::vector<RLinearConstraint> &getLinearConstraints() const;
@@ -185,6 +216,8 @@ class RStructuralInteractionSetup
         std::vector<RStructuralSensor> &getSensors();
         const std::vector<RStructuralActuator> &getActuators() const;
         std::vector<RStructuralActuator> &getActuators();
+        const std::vector<RStructuralPrescribedMotion> &getPrescribedMotions() const;
+        std::vector<RStructuralPrescribedMotion> &getPrescribedMotions();
 
         //! Expand rigid, distributed and tie couplings into solver equations.
         std::vector<RLinearConstraint> buildLinearConstraints(const RModel &model) const;
