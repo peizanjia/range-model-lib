@@ -27,6 +27,7 @@ set(range_model_lib_tests
     tst_problem_setup
     tst_surface
     tst_structural_product_profile
+    tst_structural_cable_setup
 )
 
 foreach(test_name IN LISTS range_model_lib_tests)

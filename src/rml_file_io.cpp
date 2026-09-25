@@ -4545,6 +4545,10 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readAscii(inFile,problemSetup.structuralControlSetup);
     else
         problemSetup.structuralControlSetup = RStructuralControlSetup();
+    if (inFile.getVersion() > RVersion(1,3,12))
+        RFileIO::readAscii(inFile,problemSetup.structuralCableSetup);
+    else
+        problemSetup.structuralCableSetup = RStructuralCableSetup();
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4592,6 +4596,10 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readBinary(inFile,problemSetup.structuralControlSetup);
     else
         problemSetup.structuralControlSetup = RStructuralControlSetup();
+    if (inFile.getVersion() > RVersion(1,3,12))
+        RFileIO::readBinary(inFile,problemSetup.structuralCableSetup);
+    else
+        problemSetup.structuralCableSetup = RStructuralCableSetup();
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
@@ -4644,6 +4652,8 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralDynamicsRestartData,addNewLine);
     if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralControlSetup,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralCableSetup,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4659,6 +4669,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.parallelExecutionConfig);
     RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsRestartData);
     RFileIO::writeBinary(outFile,problemSetup.structuralControlSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralCableSetup);
 }
 
 
@@ -4776,6 +4787,148 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralControlSetup &set
         RFileIO::writeBinary(outFile,channel.holdSteps);
         RFileIO::writeBinary(outFile,channel.noiseAmplitude);
     }
+}
+
+void RFileIO::readAscii(RFile &inFile, RStructuralCableSetup &setup)
+{
+    RStructuralCableSetup result;
+    uint memberCount = 0;
+    RFileIO::readAscii(inFile,result.enabled);
+    RFileIO::readAscii(inFile,result.meshFingerprint);
+    RFileIO::readAscii(inFile,memberCount);
+    if (memberCount > 1000000u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive structural cable member count (%u).",memberCount);
+    }
+    result.members.resize(memberCount);
+    for (RStructuralCableMember &member : result.members)
+    {
+        RFileIO::readAscii(inFile,member.elementId);
+        RFileIO::readAscii(inFile,member.referenceLength);
+        RFileIO::readAscii(inFile,member.initialTension);
+    }
+    RFileIO::readAscii(inFile,result.maxIterations);
+    RFileIO::readAscii(inFile,result.maxLineSearchIterations);
+    RFileIO::readAscii(inFile,result.absoluteForceTolerance);
+    RFileIO::readAscii(inFile,result.relativeForceTolerance);
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralCableSetup &setup)
+{
+    RStructuralCableSetup result;
+    uint memberCount = 0;
+    auto readExact = [&](void *destination, qint64 byteCount, const char *field)
+    {
+        if (byteCount < 0 || inFile.read(static_cast<char*>(destination),byteCount) != byteCount)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Truncated structural cable binary data while reading %s.",field);
+        }
+    };
+    auto readString = [&]()
+    {
+        uint byteCount = 0;
+        readExact(&byteCount,qint64(sizeof(byteCount)),"mesh fingerprint length");
+        // A valid fingerprint is empty or 64 ASCII hex bytes. Bound the read
+        // before allocating so a corrupt length cannot request arbitrary RAM.
+        if (byteCount > 64u)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural cable mesh fingerprint length (%u).",byteCount);
+        }
+        QByteArray bytes = inFile.read(qint64(byteCount));
+        if (bytes.size() != qsizetype(byteCount))
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Truncated structural cable binary data while reading mesh fingerprint.");
+        }
+        return QString::fromUtf8(bytes.constData(),bytes.size());
+    };
+
+    static_assert(sizeof(bool) == sizeof(unsigned char),
+                  "Binary model format requires a one-byte bool representation.");
+    unsigned char encodedEnabled = 0;
+    readExact(&encodedEnabled,qint64(sizeof(encodedEnabled)),"enabled flag");
+    if (encodedEnabled > 1u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Invalid structural cable enabled flag (%u).",unsigned(encodedEnabled));
+    }
+    result.enabled = encodedEnabled != 0;
+    result.meshFingerprint = readString();
+    readExact(&memberCount,qint64(sizeof(memberCount)),"member count");
+    if (memberCount > 1000000u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive structural cable member count (%u).",memberCount);
+    }
+    result.members.resize(memberCount);
+    for (RStructuralCableMember &member : result.members)
+    {
+        readExact(&member.elementId,qint64(sizeof(member.elementId)),"member element ID");
+        readExact(&member.referenceLength,qint64(sizeof(member.referenceLength)),"member reference length");
+        readExact(&member.initialTension,qint64(sizeof(member.initialTension)),"member initial tension");
+    }
+    readExact(&result.maxIterations,qint64(sizeof(result.maxIterations)),"maximum iterations");
+    readExact(&result.maxLineSearchIterations,qint64(sizeof(result.maxLineSearchIterations)),"maximum line-search iterations");
+    readExact(&result.absoluteForceTolerance,qint64(sizeof(result.absoluteForceTolerance)),"absolute force tolerance");
+    readExact(&result.relativeForceTolerance,qint64(sizeof(result.relativeForceTolerance)),"relative force tolerance");
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralCableSetup &setup, bool addNewLine)
+{
+    setup.validate();
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+    write(setup.enabled);
+    write(setup.meshFingerprint);
+    write(uint(setup.members.size()));
+    for (const RStructuralCableMember &member : setup.members)
+    {
+        write(member.elementId);
+        write(member.referenceLength);
+        write(member.initialTension);
+    }
+    write(setup.maxIterations);
+    write(setup.maxLineSearchIterations);
+    write(setup.absoluteForceTolerance);
+    write(setup.relativeForceTolerance);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralCableSetup &setup)
+{
+    setup.validate();
+    RFileIO::writeBinary(outFile,setup.enabled);
+    RFileIO::writeBinary(outFile,setup.meshFingerprint);
+    RFileIO::writeBinary(outFile,uint(setup.members.size()));
+    for (const RStructuralCableMember &member : setup.members)
+    {
+        RFileIO::writeBinary(outFile,member.elementId);
+        RFileIO::writeBinary(outFile,member.referenceLength);
+        RFileIO::writeBinary(outFile,member.initialTension);
+    }
+    RFileIO::writeBinary(outFile,setup.maxIterations);
+    RFileIO::writeBinary(outFile,setup.maxLineSearchIterations);
+    RFileIO::writeBinary(outFile,setup.absoluteForceTolerance);
+    RFileIO::writeBinary(outFile,setup.relativeForceTolerance);
 }
 
 void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsSetup &setup)
