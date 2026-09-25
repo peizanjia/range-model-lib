@@ -1991,6 +1991,16 @@ void RFileIO::readBinary(RFile &inFile, RVariable &variable)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RVariable &variable, bool addNewLine)
 {
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    // Result fields can be the input to a resumed solve. Keep double values
+    // round-trip safe, as the model coordinates and restart records already are.
+    outFile.getTextStream().setRealNumberPrecision(17);
+
     RFileIO::writeAscii(outFile,variable.type,addNewLine);
     if (!addNewLine)
     {

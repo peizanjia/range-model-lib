@@ -257,6 +257,7 @@ private slots:
     void identifiersRemainStableAcrossEdits();
     void resizeFailsAtomicallyWhenPhysicalIdentifiersAreExhausted();
     void currentAsciiAndBinaryFormatsRoundTripIdentifiers();
+    void asciiAndBinaryResultValuesRoundTripExactly();
     void legacyAsciiAndBinaryModelsReceiveIdentifiers();
     void malformedCurrentIdentifiersDoNotReplaceExistingModel();
 };
@@ -366,6 +367,31 @@ void TestModelPhysicalIds::currentAsciiAndBinaryFormatsRoundTripIdentifiers()
         QCOMPARE(restored.getNodePhysicalId(3),104u);
         restored.setNElements(2);
         QCOMPARE(restored.getElementPhysicalId(1),502u);
+    }
+}
+
+void TestModelPhysicalIds::asciiAndBinaryResultValuesRoundTripExactly()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    RModel source = makeModel();
+    const double expected = -0.012345678901234567;
+    const uint variablePosition = source.addVariable(RVariable(R_VARIABLE_VELOCITY));
+    RVariable &velocity = source.getVariable(variablePosition);
+    velocity.setApplyType(R_VARIABLE_APPLY_NODE);
+    velocity.resize(3,source.getNNodes());
+    velocity.setValue(0,1,expected);
+
+    for (bool binary : {false,true})
+    {
+        const QString path = directory.filePath(binary ? QStringLiteral("values.rbm")
+                                                     : QStringLiteral("values.ram"));
+        QCOMPARE(source.write(path,false),path);
+        RModel restored;
+        restored.read(path);
+        const uint restoredPosition = restored.findVariable(R_VARIABLE_VELOCITY);
+        QVERIFY(restoredPosition != RConstants::eod);
+        QCOMPARE(restored.getVariable(restoredPosition).getValue(0,1),expected);
     }
 }
 
