@@ -74,6 +74,10 @@ class RResults
         //! If such variable already exist it will be replaced.
         unsigned int addVariable(const RVariable &variable);
 
+        //! Replace or append a batch only after all copies and validation succeed.
+        //! A later failure leaves the original result-variable vector unchanged.
+        void upsertVariablesAtomic(const std::vector<RVariable> &replacements);
+
         //! Set variable.
         void setVariable(unsigned int     position,
                            const RVariable &variable);

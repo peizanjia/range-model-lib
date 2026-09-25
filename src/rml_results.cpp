@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <string>
+#include <set>
 #include <vector>
 
 #include <rbl_error.h>
@@ -142,6 +144,27 @@ unsigned int RResults::addVariable(const RVariable &variable)
     }
     return variablePosition;
 } /* RResults::addVariable */
+
+void RResults::upsertVariablesAtomic(const std::vector<RVariable> &replacements)
+{
+    std::vector<RVariable> staged(this->variables);
+    std::set<RVariableType> seen;
+    for (const RVariable &replacement : replacements)
+    {
+        const RVariableType type = replacement.getType();
+        if (type==R_VARIABLE_NONE || !seen.insert(type).second)
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                         "Result-variable batch contains an invalid or repeated type.");
+        auto existing = std::find_if(staged.begin(),staged.end(),
+            [type](const RVariable &variable){return variable.getType()==type;});
+        if (existing==staged.end())
+            staged.push_back(replacement);
+        else
+            *existing = replacement;
+    }
+    // std::vector with std::allocator swaps without allocating or throwing.
+    this->variables.swap(staged);
+}
 
 
 void RResults::setVariable (unsigned int     position,
