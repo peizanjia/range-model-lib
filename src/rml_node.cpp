@@ -7,6 +7,7 @@ RNode::RNode ()
     : x(0.0)
     , y(0.0)
     , z(0.0)
+    , physicalId(0)
 {
     this->_init ();
 } /* RNode::RNode */
@@ -18,6 +19,7 @@ RNode::RNode (double x,
     : x(x)
     , y(y)
     , z(z)
+    , physicalId(0)
 {
     this->_init ();
 }
@@ -26,6 +28,7 @@ RNode::RNode (const RR3Vector &vector)
     : x(vector[0])
     , y(vector[1])
     , z(vector[2])
+    , physicalId(0)
 {
     this->_init ();
 } /* RNode::RNode */
@@ -49,6 +52,7 @@ void RNode::_init (const RNode *pNode)
         this->x = pNode->x;
         this->y = pNode->y;
         this->z = pNode->z;
+        this->physicalId = pNode->physicalId;
     }
 } /* RNode::_init */
 

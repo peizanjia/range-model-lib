@@ -183,6 +183,7 @@ target_compile_definitions(range-model-lib
         FILE_MAJOR_VERSION=1
         FILE_MINOR_VERSION=3
         FILE_RELEASE_VERSION=16
+        MODEL_FILE_RELEASE_VERSION=17
         TETLIBRARY
 )
 

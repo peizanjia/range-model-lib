@@ -19,6 +19,8 @@ class RNode
         double y;
         //! Z coordinate
         double z;
+        //! Stable physical identifier; zero means not assigned by an RModel.
+        uint physicalId;
 
     public:
 
@@ -55,6 +57,12 @@ class RNode
         inline double getZ ( void ) const
         {
             return this->z;
+        }
+
+        //! Return the stable physical identifier assigned by the owning model.
+        inline uint getPhysicalId ( void ) const
+        {
+            return this->physicalId;
         }
 
         //! Set x coordinate
@@ -131,6 +139,8 @@ class RNode
 
         //! Allow RFileIO to access private members.
         friend class RFileIO;
+        //! Allow RModel to assign unique model-local physical identifiers.
+        friend class RModel;
 
 };
 

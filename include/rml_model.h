@@ -50,6 +50,15 @@ class RModel : public RProblem, public RResults
         //! Internal initialization function.
         void _init(const RModel *pModel = nullptr);
 
+        //! Allocate a model-local physical identifier for a newly created node.
+        uint allocateNodePhysicalId();
+
+        //! Allocate a model-local physical identifier for a newly created element.
+        uint allocateElementPhysicalId();
+
+        //! Validate that all nodes and elements have unique, nonzero physical identifiers.
+        void validatePhysicalIds() const;
+
         //! Add element to element group.
         void addElementToGroup(uint elementID,
                                  uint groupID = 0);
@@ -88,6 +97,10 @@ class RModel : public RProblem, public RResults
         std::vector<RUVector> volumeNeigs;
         //! Display properties.
         RModelData modelData;
+        //! Next unused physical node identifier; RConstants::eod means the range is exhausted.
+        uint nextNodePhysicalId;
+        //! Next unused physical element identifier; RConstants::eod means the range is exhausted.
+        uint nextElementPhysicalId;
 
     public:
 
@@ -191,6 +204,15 @@ class RModel : public RProblem, public RResults
         //! Set node in model at given position.
         void setNode(uint position, const RNode &node);
 
+        //! Return a stable physical node identifier, independent of the current node position.
+        uint getNodePhysicalId(uint position) const;
+
+        //! Set a stable physical node identifier. Identifiers must be nonzero and unique.
+        void setNodePhysicalId(uint position, uint physicalId);
+
+        //! Find a current node position by stable physical identifier; returns RConstants::eod if absent.
+        uint findNodePositionByPhysicalId(uint physicalId) const;
+
         //! Remove node from model at given position.
         //! If specified return vecor of indexes of removed elements and
         //! element groups in ascending order.
@@ -281,6 +303,15 @@ class RModel : public RProblem, public RResults
 
         //! Set element in model at given position.
         void setElement(uint position, const RElement &element, bool addToGroup = true);
+
+        //! Return a stable physical element identifier, independent of the current element position.
+        uint getElementPhysicalId(uint position) const;
+
+        //! Set a stable physical element identifier. Identifiers must be nonzero and unique.
+        void setElementPhysicalId(uint position, uint physicalId);
+
+        //! Find a current element position by stable physical identifier; returns RConstants::eod if absent.
+        uint findElementPositionByPhysicalId(uint physicalId) const;
 
         //! Remove element from model at given position.
         void removeElement(uint position, bool removeGroups);

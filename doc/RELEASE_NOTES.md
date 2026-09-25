@@ -1,3 +1,18 @@
+## Version 1.3.17
+
+### Improvements
+
+- **RModel** assigns nonzero model-local physical IDs to nodes and elements.
+  IDs remain attached to their entities through copies and compaction, and are
+  preserved in model files. The model API exposes lookup and explicit ID
+  assignment; IDs must be unique within their entity kind.
+- New model files store the ID tables and next-ID counters. Older model files
+  remain readable and receive deterministic 1-based IDs in their stored order.
+  This provides same-model identity across save/load, but does not infer
+  correspondence after remeshing.
+
+---
+
 ## Version 1.2.0
 
 ### Improvements

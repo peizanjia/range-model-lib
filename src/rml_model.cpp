@@ -9,6 +9,7 @@
 #include <omp.h>
 #include <stack>
 #include <float.h>
+#include <set>
 
 #include <rbl_error.h>
 #include <rbl_logger.h>
@@ -20,7 +21,7 @@
 #include "rml_view_factor_matrix.h"
 #include "rml_polygon.h"
 
-const RVersion RModel::version = RVersion(FILE_MAJOR_VERSION,FILE_MINOR_VERSION,FILE_RELEASE_VERSION);
+const RVersion RModel::version = RVersion(FILE_MAJOR_VERSION,FILE_MINOR_VERSION,MODEL_FILE_RELEASE_VERSION);
 
 void RModel::_init (const RModel *pModel)
 {
@@ -42,8 +43,75 @@ void RModel::_init (const RModel *pModel)
         this->surfaceNeigs = pModel->surfaceNeigs;
         this->volumeNeigs = pModel->volumeNeigs;
         this->modelData = pModel->modelData;
+        this->nextNodePhysicalId = pModel->nextNodePhysicalId;
+        this->nextElementPhysicalId = pModel->nextElementPhysicalId;
+    }
+    else
+    {
+        this->nextNodePhysicalId = 1;
+        this->nextElementPhysicalId = 1;
     }
 } /* RModel::_init */
+
+
+uint RModel::allocateNodePhysicalId()
+{
+    if (this->nextNodePhysicalId == RConstants::eod)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical node identifier is available.");
+    }
+
+    const uint physicalId = this->nextNodePhysicalId;
+    this->nextNodePhysicalId = physicalId + 1;
+    return physicalId;
+} /* RModel::allocateNodePhysicalId */
+
+
+uint RModel::allocateElementPhysicalId()
+{
+    if (this->nextElementPhysicalId == RConstants::eod)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element identifier is available.");
+    }
+
+    const uint physicalId = this->nextElementPhysicalId;
+    this->nextElementPhysicalId = physicalId + 1;
+    return physicalId;
+} /* RModel::allocateElementPhysicalId */
+
+
+void RModel::validatePhysicalIds() const
+{
+    std::set<uint> nodeIds;
+    uint maxNodeId = 0;
+    for (const RNode &node : this->nodes)
+    {
+        if (node.physicalId == 0 || node.physicalId == RConstants::eod || !nodeIds.insert(node.physicalId).second)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Model node physical identifiers must be nonzero and unique.");
+        }
+        maxNodeId = std::max(maxNodeId,node.physicalId);
+    }
+    if (this->nextNodePhysicalId != RConstants::eod && this->nextNodePhysicalId <= maxNodeId)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Next physical node identifier must be greater than all assigned identifiers.");
+    }
+
+    std::set<uint> elementIds;
+    uint maxElementId = 0;
+    for (const RElement &element : this->elements)
+    {
+        if (element.physicalId == 0 || element.physicalId == RConstants::eod || !elementIds.insert(element.physicalId).second)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Model element physical identifiers must be nonzero and unique.");
+        }
+        maxElementId = std::max(maxElementId,element.physicalId);
+    }
+    if (this->nextElementPhysicalId != RConstants::eod && this->nextElementPhysicalId <= maxElementId)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Next physical element identifier must be greater than all assigned identifiers.");
+    }
+} /* RModel::validatePhysicalIds */
 
 
 RModel::RModel()
@@ -1025,7 +1093,12 @@ uint RModel::getNNodes() const
 
 void RModel::setNNodes (uint nnodes)
 {
+    const uint previousCount = uint(this->nodes.size());
     this->nodes.resize(nnodes);
+    for (uint i=previousCount;i<nnodes;i++)
+    {
+        this->nodes[i].physicalId = this->allocateNodePhysicalId();
+    }
     this->RResults::setNNodes (nnodes);
 } /* RModel::setNNodes */
 
@@ -1066,7 +1139,11 @@ const std::vector<RNode> &RModel::getNodes() const
 
 void RModel::addNode(const RNode &node)
 {
-    this->nodes.push_back (node);
+    RNode addedNode(node);
+    // addNode creates a new physical entity even if its coordinates came from
+    // a copied node. Call setNodePhysicalId explicitly when importing an ID.
+    addedNode.physicalId = this->allocateNodePhysicalId();
+    this->nodes.push_back (addedNode);
     this->RResults::addNode(0.0);
 } /* RModel::addNode */
 
@@ -1075,8 +1152,80 @@ void RModel::setNode (uint  position,
                        const RNode  &node)
 {
     R_ERROR_ASSERT (position < this->nodes.size());
-    this->nodes[position] = node;
+    RNode replacement(node);
+    if (replacement.physicalId == 0)
+    {
+        replacement.physicalId = this->nodes[position].physicalId;
+        if (replacement.physicalId == 0)
+        {
+            replacement.physicalId = this->allocateNodePhysicalId();
+        }
+    }
+    else
+    {
+        const uint existingPosition = this->findNodePositionByPhysicalId(replacement.physicalId);
+        if (existingPosition != RConstants::eod && existingPosition != position)
+        {
+            // setNode updates a slot. If the supplied value is a copy of a
+            // different model slot, keep this slot's identity rather than
+            // creating a duplicate (mesh import commonly copies node arrays).
+            replacement.physicalId = this->nodes[position].physicalId;
+            if (replacement.physicalId == 0)
+            {
+                replacement.physicalId = this->allocateNodePhysicalId();
+            }
+        }
+        else if (this->nextNodePhysicalId != RConstants::eod && replacement.physicalId >= this->nextNodePhysicalId)
+        {
+            this->nextNodePhysicalId = replacement.physicalId + 1;
+        }
+    }
+    this->nodes[position] = replacement;
 } /* RModel::set_node */
+
+
+uint RModel::getNodePhysicalId(uint position) const
+{
+    R_ERROR_ASSERT(position < this->nodes.size());
+    return this->nodes[position].physicalId;
+} /* RModel::getNodePhysicalId */
+
+
+void RModel::setNodePhysicalId(uint position, uint physicalId)
+{
+    R_ERROR_ASSERT(position < this->nodes.size());
+    if (physicalId == 0 || physicalId == RConstants::eod)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Node physical identifier must be nonzero and must not equal the end-of-data sentinel.");
+    }
+    const uint existingPosition = this->findNodePositionByPhysicalId(physicalId);
+    if (existingPosition != RConstants::eod && existingPosition != position)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Node physical identifier is already in use.");
+    }
+    this->nodes[position].physicalId = physicalId;
+    if (this->nextNodePhysicalId != RConstants::eod && physicalId >= this->nextNodePhysicalId)
+    {
+        this->nextNodePhysicalId = physicalId + 1;
+    }
+} /* RModel::setNodePhysicalId */
+
+
+uint RModel::findNodePositionByPhysicalId(uint physicalId) const
+{
+    if (physicalId == 0 || physicalId == RConstants::eod)
+    {
+        return RConstants::eod;
+    }
+    for (uint i=0;i<this->nodes.size();i++)
+    {
+        if (this->nodes[i].physicalId == physicalId)
+        {
+            return i;
+        }
+    }
+    return RConstants::eod;
+} /* RModel::findNodePositionByPhysicalId */
 
 
 void RModel::removeNode(uint position)
@@ -1515,7 +1664,12 @@ uint RModel::getNElements(REntityGroupType elementGroupType) const
 
 void RModel::setNElements (uint nelements)
 {
+    const uint previousCount = uint(this->elements.size());
     this->elements.resize(nelements);
+    for (uint i=previousCount;i<nelements;i++)
+    {
+        this->elements[i].physicalId = this->allocateElementPhysicalId();
+    }
     this->RResults::setNElements(nelements);
 
     for (uint i=0;i<this->elements.size();i++)
@@ -1581,11 +1735,59 @@ std::vector<RElement> &RModel::getElements()
 } /* RModel::getElements */
 
 
+uint RModel::getElementPhysicalId(uint position) const
+{
+    R_ERROR_ASSERT(position < this->elements.size());
+    return this->elements[position].physicalId;
+} /* RModel::getElementPhysicalId */
+
+
+void RModel::setElementPhysicalId(uint position, uint physicalId)
+{
+    R_ERROR_ASSERT(position < this->elements.size());
+    if (physicalId == 0 || physicalId == RConstants::eod)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Element physical identifier must be nonzero and must not equal the end-of-data sentinel.");
+    }
+    const uint existingPosition = this->findElementPositionByPhysicalId(physicalId);
+    if (existingPosition != RConstants::eod && existingPosition != position)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Element physical identifier is already in use.");
+    }
+    this->elements[position].physicalId = physicalId;
+    if (this->nextElementPhysicalId != RConstants::eod && physicalId >= this->nextElementPhysicalId)
+    {
+        this->nextElementPhysicalId = physicalId + 1;
+    }
+} /* RModel::setElementPhysicalId */
+
+
+uint RModel::findElementPositionByPhysicalId(uint physicalId) const
+{
+    if (physicalId == 0 || physicalId == RConstants::eod)
+    {
+        return RConstants::eod;
+    }
+    for (uint i=0;i<this->elements.size();i++)
+    {
+        if (this->elements[i].physicalId == physicalId)
+        {
+            return i;
+        }
+    }
+    return RConstants::eod;
+} /* RModel::findElementPositionByPhysicalId */
+
+
 void RModel::addElement (const RElement &element,
                          bool            addToGroup,
                          uint            groupID)
 {
-    this->elements.push_back(element);
+    RElement addedElement(element);
+    // addElement creates a new physical entity even when its connectivity was
+    // copied from another element. Explicit imported IDs use the model setter.
+    addedElement.physicalId = this->allocateElementPhysicalId();
+    this->elements.push_back(addedElement);
     this->RResults::addElement(0.0);
 
     if (addToGroup)
@@ -1654,10 +1856,38 @@ void RModel::setElement (uint    position,
 {
     R_ERROR_ASSERT (position < this->elements.size());
 
-    REntityGroupType oldType = RElementGroup::getGroupType (this->elements[position].getType());
-    REntityGroupType newType = RElementGroup::getGroupType (element.getType());
+    RElement replacement(element);
+    if (replacement.physicalId == 0)
+    {
+        replacement.physicalId = this->elements[position].physicalId;
+        if (replacement.physicalId == 0)
+        {
+            replacement.physicalId = this->allocateElementPhysicalId();
+        }
+    }
+    else
+    {
+        const uint existingPosition = this->findElementPositionByPhysicalId(replacement.physicalId);
+        if (existingPosition != RConstants::eod && existingPosition != position)
+        {
+            // setElement updates a slot. If the supplied value is a copy of a
+            // different model slot, retain this slot's identity.
+            replacement.physicalId = this->elements[position].physicalId;
+            if (replacement.physicalId == 0)
+            {
+                replacement.physicalId = this->allocateElementPhysicalId();
+            }
+        }
+        else if (this->nextElementPhysicalId != RConstants::eod && replacement.physicalId >= this->nextElementPhysicalId)
+        {
+            this->nextElementPhysicalId = replacement.physicalId + 1;
+        }
+    }
 
-    this->elements[position] = element;
+    REntityGroupType oldType = RElementGroup::getGroupType (this->elements[position].getType());
+    REntityGroupType newType = RElementGroup::getGroupType (replacement.getType());
+
+    this->elements[position] = replacement;
 
     if (oldType != newType)
     {
@@ -6152,6 +6382,7 @@ uint RModel::tetrahedralizeSurface(const std::vector<uint> surfaceIDs)
     for (uint i=0;i<steinerNodes.size();i++)
     {
         this->nodes[nNodes + i] = steinerNodes[i];
+        this->nodes[nNodes + i].physicalId = this->allocateNodePhysicalId();
     }
 
     // Add tetrahedrons to volume.
@@ -7274,6 +7505,10 @@ QString RModel::readAscii(const QString &fileName)
     this->nodes.resize(nNodes);
     for (uint i=0;i<nNodes;i++)
     {
+        this->nodes[i].physicalId = 0;
+    }
+    for (uint i=0;i<nNodes;i++)
+    {
         RFileIO::readAscii(modelFile,this->nodes[i]);
     }
     uint nElements = 0;
@@ -7282,7 +7517,38 @@ QString RModel::readAscii(const QString &fileName)
     this->elements.resize(nElements);
     for (uint i=0;i<nElements;i++)
     {
+        this->elements[i].physicalId = 0;
+    }
+    for (uint i=0;i<nElements;i++)
+    {
         RFileIO::readAscii(modelFile,this->elements[i]);
+    }
+    if (modelFile.getVersion() >= RVersion(1,3,17))
+    {
+        for (uint i=0;i<nNodes;i++)
+        {
+            RFileIO::readAscii(modelFile,this->nodes[i].physicalId);
+        }
+        for (uint i=0;i<nElements;i++)
+        {
+            RFileIO::readAscii(modelFile,this->elements[i].physicalId);
+        }
+        RFileIO::readAscii(modelFile,this->nextNodePhysicalId);
+        RFileIO::readAscii(modelFile,this->nextElementPhysicalId);
+        this->validatePhysicalIds();
+    }
+    else
+    {
+        this->nextNodePhysicalId = 1;
+        for (uint i=0;i<nNodes;i++)
+        {
+            this->nodes[i].physicalId = this->allocateNodePhysicalId();
+        }
+        this->nextElementPhysicalId = 1;
+        for (uint i=0;i<nElements;i++)
+        {
+            this->elements[i].physicalId = this->allocateElementPhysicalId();
+        }
     }
     uint nPoints = 0;
     RFileIO::readAscii(modelFile,nPoints);
@@ -7466,6 +7732,10 @@ QString RModel::readBinary(const QString &fileName)
     this->nodes.resize(nNodes);
     for (uint i=0;i<nNodes;i++)
     {
+        this->nodes[i].physicalId = 0;
+    }
+    for (uint i=0;i<nNodes;i++)
+    {
         RFileIO::readBinary(modelFile,this->nodes[i]);
     }
     uint nElements = 0;
@@ -7474,7 +7744,38 @@ QString RModel::readBinary(const QString &fileName)
     this->elements.resize(nElements);
     for (uint i=0;i<nElements;i++)
     {
+        this->elements[i].physicalId = 0;
+    }
+    for (uint i=0;i<nElements;i++)
+    {
         RFileIO::readBinary(modelFile,this->elements[i]);
+    }
+    if (modelFile.getVersion() >= RVersion(1,3,17))
+    {
+        for (uint i=0;i<nNodes;i++)
+        {
+            RFileIO::readBinary(modelFile,this->nodes[i].physicalId);
+        }
+        for (uint i=0;i<nElements;i++)
+        {
+            RFileIO::readBinary(modelFile,this->elements[i].physicalId);
+        }
+        RFileIO::readBinary(modelFile,this->nextNodePhysicalId);
+        RFileIO::readBinary(modelFile,this->nextElementPhysicalId);
+        this->validatePhysicalIds();
+    }
+    else
+    {
+        this->nextNodePhysicalId = 1;
+        for (uint i=0;i<nNodes;i++)
+        {
+            this->nodes[i].physicalId = this->allocateNodePhysicalId();
+        }
+        this->nextElementPhysicalId = 1;
+        for (uint i=0;i<nElements;i++)
+        {
+            this->elements[i].physicalId = this->allocateElementPhysicalId();
+        }
     }
     uint nPoints = 0;
     RFileIO::readBinary(modelFile,nPoints);
@@ -7609,6 +7910,7 @@ QString RModel::readBinary(const QString &fileName)
 
 void RModel::writeAscii(const QString &fileName) const
 {
+    this->validatePhysicalIds();
     RProgressInitialize("Writing model file");
 
     if (fileName.isEmpty())
@@ -7664,6 +7966,16 @@ void RModel::writeAscii(const QString &fileName) const
         RFileIO::writeAscii(modelFile,this->elements[i],false);
         RFileIO::writeNewLineAscii(modelFile);
     }
+    for (uint i=0;i<this->getNNodes();i++)
+    {
+        RFileIO::writeAscii(modelFile,this->nodes[i].physicalId);
+    }
+    for (uint i=0;i<this->getNElements();i++)
+    {
+        RFileIO::writeAscii(modelFile,this->elements[i].physicalId);
+    }
+    RFileIO::writeAscii(modelFile,this->nextNodePhysicalId);
+    RFileIO::writeAscii(modelFile,this->nextElementPhysicalId);
     RLogger::debug("Points: %u\n",this->getNPoints());
     RFileIO::writeAscii(modelFile,this->getNPoints());
     for (uint i=0;i<this->getNPoints();i++)
@@ -7792,6 +8104,7 @@ void RModel::writeAscii(const QString &fileName) const
 
 void RModel::writeBinary(const QString &fileName) const
 {
+    this->validatePhysicalIds();
     RProgressInitialize("Writing model file");
 
     if (fileName.isEmpty())
@@ -7845,6 +8158,16 @@ void RModel::writeBinary(const QString &fileName) const
         RProgressPrint(cstep++,nsteps);
         RFileIO::writeBinary(modelFile,this->elements[i]);
     }
+    for (uint i=0;i<this->getNNodes();i++)
+    {
+        RFileIO::writeBinary(modelFile,this->nodes[i].physicalId);
+    }
+    for (uint i=0;i<this->getNElements();i++)
+    {
+        RFileIO::writeBinary(modelFile,this->elements[i].physicalId);
+    }
+    RFileIO::writeBinary(modelFile,this->nextNodePhysicalId);
+    RFileIO::writeBinary(modelFile,this->nextElementPhysicalId);
     RLogger::debug("Points: %u\n",this->getNPoints());
     RFileIO::writeBinary(modelFile,this->getNPoints());
     for (uint i=0;i<this->getNPoints();i++)

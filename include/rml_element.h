@@ -89,6 +89,8 @@ class RElement
         RElementType type;
         //! List of node IDs (positions) in global node vecotr.
         std::vector <unsigned int> nodeIDs;
+        //! Stable physical identifier; zero means not assigned by an RModel.
+        uint physicalId;
 
     public:
 
@@ -112,6 +114,9 @@ class RElement
 
         //! Get element type.
         RElementType getType ( void ) const;
+
+        //! Return the stable physical identifier assigned by the owning model.
+        uint getPhysicalId ( void ) const;
 
         //! Set element type.
         void setType ( RElementType type );
@@ -300,6 +305,8 @@ class RElement
 
         //! Allow RFileIO to access private members.
         friend class RFileIO;
+        //! Allow RModel to assign unique model-local physical identifiers.
+        friend class RModel;
 
         //! Return element type for given element ID.
         static RElementType getTypeFromId( const QString &elementId );

@@ -178,6 +178,7 @@ static const RElementDesc elementDesc [] =
 
 
 RElement::RElement (RElementType type)
+    : physicalId(0)
 {
     this->setType (type);
     this->_init ();
@@ -199,6 +200,7 @@ void RElement::_init (const RElement *element)
 {
     if (element)
     {
+        this->physicalId = element->physicalId;
         this->setType (element->getType());
         for (unsigned int i=0;i<this->size ();i++)
         {
@@ -206,6 +208,12 @@ void RElement::_init (const RElement *element)
         }
     }
 } /* RElement::_init */
+
+
+uint RElement::getPhysicalId(void) const
+{
+    return this->physicalId;
+} /* RElement::getPhysicalId */
 
 
 RElement & RElement::operator = (const RElement &element)
