@@ -20,6 +20,46 @@ static void writeLegacyEmptyInteractionSetup(RSaveFile &file, bool binary)
     }
 }
 
+static RStructuralThermalControlSetup makeThermalControlSetup()
+{
+    RStructuralThermalControlSetup setup;
+    setup.enabled = true;
+    setup.thermalSubstepSeconds = 0.0025000000000000001;
+    setup.thermalSubstepsPerMechanicalMacrostep = 8;
+    setup.mechanicalMacrostepsPerControllerSample = 5;
+
+    RStructuralThermalControlChannelSetup bounded;
+    bounded.actuatorId = QStringLiteral("heater.a");
+    bounded.heaterNodeId = QStringLiteral("node.heater.a");
+    bounded.temperatureSensorId = QStringLiteral("sensor.a");
+    bounded.temperatureSensorNodeId = QStringLiteral("node.sensor.a");
+    bounded.turnOnBelowKelvin = 295.0;
+    bounded.turnOffAtOrAboveKelvin = 305.0;
+    bounded.onPowerWatts = 50.0;
+    bounded.minimumPowerWatts = 10.0;
+    bounded.maximumPowerWatts = 100.0;
+    bounded.maximumPowerSlewWattsPerSecond = 20.0;
+    bounded.maximumPowerSlewUnlimited = false;
+
+    RStructuralThermalControlChannelSetup unlimited;
+    unlimited.actuatorId = QStringLiteral("heater.b");
+    unlimited.heaterNodeId = QStringLiteral("node.heater.b");
+    unlimited.temperatureSensorId = QStringLiteral("sensor.b");
+    unlimited.temperatureSensorNodeId = QStringLiteral("node.sensor.b");
+    unlimited.turnOnBelowKelvin = 273.15;
+    unlimited.turnOffAtOrAboveKelvin = 280.25;
+    unlimited.onPowerWatts = 0.125;
+    unlimited.minimumPowerWatts = 0.025;
+    unlimited.maximumPowerWatts = 0.5;
+    unlimited.maximumPowerSlewWattsPerSecond = 0.0;
+    unlimited.maximumPowerSlewUnlimited = true;
+
+    setup.channels = {bounded,unlimited};
+    setup.sparseObservationNodeIds = {QStringLiteral("node.sensor.b"),
+                                      QStringLiteral("node.heater.a")};
+    return setup;
+}
+
 class TestProblemSetup : public QObject
 {
     Q_OBJECT
@@ -57,6 +97,13 @@ private slots:
     void readsVersion136WithoutCheckpoint();
     void readsVersion137ButDisablesUnboundCheckpoint_data();
     void readsVersion137ButDisablesUnboundCheckpoint();
+    void thermalControlSetupRoundTrip_data();
+    void thermalControlSetupRoundTrip();
+    void thermalControlSetupValidation();
+    void readsVersion1315WithoutThermalControl_data();
+    void readsVersion1315WithoutThermalControl();
+    void rejectsThermalControlWriteBeforeVersion1316_data();
+    void rejectsThermalControlWriteBeforeVersion1316();
     void angularKinematicsDescriptors();
     void rotationalInitialConditions();
     void failedTargetWriteKeepsPreviousLink_data();
@@ -174,6 +221,158 @@ void TestProblemSetup::modelRoundTrip()
     QCOMPARE(restoredParallel.getMode(),RParallelExecutionMode::FixedThreads);
     QCOMPARE(restoredParallel.getRequestedThreads(),uint(4));
     QVERIFY(!restoredParallel.getDeterministicReduction());
+}
+
+void TestProblemSetup::thermalControlSetupRoundTrip_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii") << false;
+    QTest::newRow("binary") << true;
+}
+
+void TestProblemSetup::thermalControlSetupRoundTrip()
+{
+    QFETCH(bool,binary);
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.16"));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    const RStructuralThermalControlSetup expected = makeThermalControlSetup();
+    RProblemSetup source;
+    source.setStructuralThermalControlSetup(expected);
+    RProblemSetup copied(source);
+    QCOMPARE(copied.getStructuralThermalControlSetup().channels.size(),std::size_t(2));
+    copied.getStructuralThermalControlSetup().channels[0].actuatorId = QStringLiteral("copy-only");
+    QCOMPARE(source.getStructuralThermalControlSetup().channels[0].actuatorId,
+             QStringLiteral("heater.a"));
+
+    RModel model;
+    model.getProblemSetup().setStructuralThermalControlSetup(expected);
+    const QString path = directory.filePath(
+        QStringLiteral("thermal-control.") + RModel::getDefaultFileExtension(binary));
+    RModel restored;
+    try
+    {
+        QCOMPARE(model.write(path,false),path);
+        restored.read(path);
+    }
+    catch (const RError &error)
+    {
+        QFAIL(qPrintable(QStringLiteral("Thermal-control round trip failed: %1")
+                         .arg(error.getMessage())));
+    }
+
+    const auto &actual = restored.getProblemSetup().getStructuralThermalControlSetup();
+    QCOMPARE(actual.enabled,expected.enabled);
+    QCOMPARE(actual.thermalSubstepSeconds,expected.thermalSubstepSeconds);
+    QCOMPARE(actual.thermalSubstepsPerMechanicalMacrostep,
+             expected.thermalSubstepsPerMechanicalMacrostep);
+    QCOMPARE(actual.mechanicalMacrostepsPerControllerSample,
+             expected.mechanicalMacrostepsPerControllerSample);
+    QCOMPARE(actual.channels.size(),expected.channels.size());
+    for (std::size_t i=0;i<expected.channels.size();i++)
+    {
+        const auto &want = expected.channels[i];
+        const auto &got = actual.channels[i];
+        QCOMPARE(got.actuatorId,want.actuatorId);
+        QCOMPARE(got.heaterNodeId,want.heaterNodeId);
+        QCOMPARE(got.temperatureSensorId,want.temperatureSensorId);
+        QCOMPARE(got.temperatureSensorNodeId,want.temperatureSensorNodeId);
+        QCOMPARE(got.turnOnBelowKelvin,want.turnOnBelowKelvin);
+        QCOMPARE(got.turnOffAtOrAboveKelvin,want.turnOffAtOrAboveKelvin);
+        QCOMPARE(got.onPowerWatts,want.onPowerWatts);
+        QCOMPARE(got.minimumPowerWatts,want.minimumPowerWatts);
+        QCOMPARE(got.maximumPowerWatts,want.maximumPowerWatts);
+        QCOMPARE(got.maximumPowerSlewWattsPerSecond,want.maximumPowerSlewWattsPerSecond);
+        QCOMPARE(got.maximumPowerSlewUnlimited,want.maximumPowerSlewUnlimited);
+    }
+    QCOMPARE(actual.sparseObservationNodeIds,expected.sparseObservationNodeIds);
+}
+
+void TestProblemSetup::thermalControlSetupValidation()
+{
+    RStructuralThermalControlSetup empty;
+    empty.validate();
+    RStructuralThermalControlSetup valid = makeThermalControlSetup();
+    valid.validate();
+
+    RStructuralThermalControlSetup invalid = valid;
+    invalid.thermalSubstepSeconds = std::numeric_limits<double>::quiet_NaN();
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = valid;
+    invalid.channels[1].actuatorId = invalid.channels[0].actuatorId;
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = valid;
+    invalid.channels[0].maximumPowerSlewWattsPerSecond =
+        std::numeric_limits<double>::infinity();
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = valid;
+    invalid.sparseObservationNodeIds[1] = invalid.sparseObservationNodeIds[0];
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+
+    RProblemSetup problemSetup;
+    QVERIFY_EXCEPTION_THROWN(problemSetup.setStructuralThermalControlSetup(invalid),RError);
+    QVERIFY(!problemSetup.getStructuralThermalControlSetup().enabled);
+}
+
+void TestProblemSetup::readsVersion1315WithoutThermalControl_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.15") << false;
+    QTest::newRow("binary-1.3.15") << true;
+}
+
+void TestProblemSetup::readsVersion1315WithoutThermalControl()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "problem-1315.rbm" : "problem-1315.ram");
+    {
+        RSaveFile output(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        output.setVersion(RVersion(1,3,15));
+        QVERIFY(output.open(QIODevice::WriteOnly));
+        RProblemSetup defaults;
+        if (binary) RFileIO::writeBinary(output,defaults);
+        else RFileIO::writeAscii(output,defaults);
+        QVERIFY(output.commit());
+    }
+
+    RFile input(path,binary ? RFile::BINARY : RFile::ASCII);
+    input.setVersion(RVersion(1,3,15));
+    QVERIFY(input.open(QIODevice::ReadOnly));
+    RProblemSetup restored;
+    if (binary) RFileIO::readBinary(input,restored);
+    else RFileIO::readAscii(input,restored);
+    const auto &thermal = restored.getStructuralThermalControlSetup();
+    QVERIFY(!thermal.enabled);
+    QCOMPARE(thermal.thermalSubstepSeconds,0.0);
+    QCOMPARE(thermal.thermalSubstepsPerMechanicalMacrostep,uint(1));
+    QCOMPARE(thermal.mechanicalMacrostepsPerControllerSample,uint(1));
+    QVERIFY(thermal.channels.empty());
+    QVERIFY(thermal.sparseObservationNodeIds.empty());
+}
+
+void TestProblemSetup::rejectsThermalControlWriteBeforeVersion1316_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.15") << false;
+    QTest::newRow("binary-1.3.15") << true;
+}
+
+void TestProblemSetup::rejectsThermalControlWriteBeforeVersion1316()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? "unsupported.rbm" : "unsupported.ram");
+    RSaveFile output(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+    output.setVersion(RVersion(1,3,15));
+    QVERIFY(output.open(QIODevice::WriteOnly));
+    RProblemSetup setup;
+    setup.setStructuralThermalControlSetup(makeThermalControlSetup());
+    if (binary) QVERIFY_EXCEPTION_THROWN(RFileIO::writeBinary(output,setup),RError);
+    else QVERIFY_EXCEPTION_THROWN(RFileIO::writeAscii(output,setup),RError);
 }
 
 void TestProblemSetup::modalDampingAsciiPrecisionRoundTrip()
@@ -313,7 +512,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.15"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.16"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;

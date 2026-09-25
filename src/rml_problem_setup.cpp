@@ -17,6 +17,7 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->structuralControlSetup = pProblemSetup->structuralControlSetup;
         this->structuralCableSetup = pProblemSetup->structuralCableSetup;
         this->structuralPiezoSetup = pProblemSetup->structuralPiezoSetup;
+        this->structuralThermalControlSetup = pProblemSetup->structuralThermalControlSetup;
         this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
@@ -211,6 +212,22 @@ void RProblemSetup::setStructuralPiezoSetup(const RStructuralPiezoSetup &setup)
     this->structuralPiezoSetup = setup;
 }
 
+const RStructuralThermalControlSetup &RProblemSetup::getStructuralThermalControlSetup() const
+{
+    return this->structuralThermalControlSetup;
+}
+
+RStructuralThermalControlSetup &RProblemSetup::getStructuralThermalControlSetup()
+{
+    return this->structuralThermalControlSetup;
+}
+
+void RProblemSetup::setStructuralThermalControlSetup(const RStructuralThermalControlSetup &setup)
+{
+    setup.validate();
+    this->structuralThermalControlSetup = setup;
+}
+
 const RStructuralDynamicsRestartData &RProblemSetup::getStructuralDynamicsRestartData() const
 {
     return this->structuralDynamicsRestartData;
@@ -257,6 +274,7 @@ QString RProblemSetup::toString() const
             + ", Sensors: " + QString::number(this->structuralInteractionSetup.getSensors().size())
             + ", Actuators: " + QString::number(this->structuralInteractionSetup.getActuators().size())
             + ", Structural dynamics: " + this->structuralDynamicsSetup.toString()
+            + ", Thermal control: " + QString(this->structuralThermalControlSetup.enabled ? "Enabled" : "Disabled")
             + ", Structural restart: " + QString(this->structuralDynamicsRestartData.available ? "Available" : "None")
             + ", Parallel execution: " + this->parallelExecutionConfig.toString()
             + " }";

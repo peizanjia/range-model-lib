@@ -4575,6 +4575,10 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readAscii(inFile,problemSetup.structuralPiezoSetup);
     else
         problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
+    if (inFile.getVersion() > RVersion(1,3,15))
+        RFileIO::readAscii(inFile,problemSetup.structuralThermalControlSetup);
+    else
+        problemSetup.structuralThermalControlSetup = RStructuralThermalControlSetup();
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4630,6 +4634,10 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readBinary(inFile,problemSetup.structuralPiezoSetup);
     else
         problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
+    if (inFile.getVersion() > RVersion(1,3,15))
+        RFileIO::readBinary(inFile,problemSetup.structuralThermalControlSetup);
+    else
+        problemSetup.structuralThermalControlSetup = RStructuralThermalControlSetup();
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
@@ -4686,6 +4694,8 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralCableSetup,addNewLine);
     if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralPiezoSetup,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralThermalControlSetup,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4703,6 +4713,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralControlSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralCableSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralPiezoSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralThermalControlSetup);
 }
 
 
@@ -4820,6 +4831,183 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralControlSetup &set
         RFileIO::writeBinary(outFile,channel.holdSteps);
         RFileIO::writeBinary(outFile,channel.noiseAmplitude);
     }
+}
+
+/*********************************************************************
+ * Version 1.3.16 multirate thermal-control configuration             *
+ *********************************************************************/
+
+void RFileIO::readAscii(RFile &inFile, RStructuralThermalControlSetup &setup)
+{
+    RStructuralThermalControlSetup result;
+    RFileIO::readAscii(inFile,result.enabled);
+    RFileIO::readAscii(inFile,result.thermalSubstepSeconds);
+    RFileIO::readAscii(inFile,result.thermalSubstepsPerMechanicalMacrostep);
+    RFileIO::readAscii(inFile,result.mechanicalMacrostepsPerControllerSample);
+
+    uint channelCount = 0;
+    RFileIO::readAscii(inFile,channelCount);
+    if (channelCount > 4096u)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive thermal control channel count (%u).",channelCount);
+    result.channels.resize(channelCount);
+    for (auto &channel : result.channels)
+    {
+        RFileIO::readAscii(inFile,channel.actuatorId);
+        RFileIO::readAscii(inFile,channel.heaterNodeId);
+        RFileIO::readAscii(inFile,channel.temperatureSensorId);
+        RFileIO::readAscii(inFile,channel.temperatureSensorNodeId);
+        RFileIO::readAscii(inFile,channel.turnOnBelowKelvin);
+        RFileIO::readAscii(inFile,channel.turnOffAtOrAboveKelvin);
+        RFileIO::readAscii(inFile,channel.onPowerWatts);
+        RFileIO::readAscii(inFile,channel.minimumPowerWatts);
+        RFileIO::readAscii(inFile,channel.maximumPowerWatts);
+        RFileIO::readAscii(inFile,channel.maximumPowerSlewWattsPerSecond);
+        RFileIO::readAscii(inFile,channel.maximumPowerSlewUnlimited);
+    }
+
+    uint sparseNodeCount = 0;
+    RFileIO::readAscii(inFile,sparseNodeCount);
+    if (sparseNodeCount > 1000000u)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive sparse thermal observation node count (%u).",sparseNodeCount);
+    result.sparseObservationNodeIds.resize(sparseNodeCount);
+    for (QString &nodeId : result.sparseObservationNodeIds)
+        RFileIO::readAscii(inFile,nodeId);
+
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralThermalControlSetup &setup)
+{
+    RStructuralThermalControlSetup result;
+    RFileIO::readBinary(inFile,result.enabled);
+    RFileIO::readBinary(inFile,result.thermalSubstepSeconds);
+    RFileIO::readBinary(inFile,result.thermalSubstepsPerMechanicalMacrostep);
+    RFileIO::readBinary(inFile,result.mechanicalMacrostepsPerControllerSample);
+
+    uint channelCount = 0;
+    RFileIO::readBinary(inFile,channelCount);
+    if (channelCount > 4096u)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive thermal control channel count (%u).",channelCount);
+    result.channels.resize(channelCount);
+    for (auto &channel : result.channels)
+    {
+        RFileIO::readBinary(inFile,channel.actuatorId);
+        RFileIO::readBinary(inFile,channel.heaterNodeId);
+        RFileIO::readBinary(inFile,channel.temperatureSensorId);
+        RFileIO::readBinary(inFile,channel.temperatureSensorNodeId);
+        RFileIO::readBinary(inFile,channel.turnOnBelowKelvin);
+        RFileIO::readBinary(inFile,channel.turnOffAtOrAboveKelvin);
+        RFileIO::readBinary(inFile,channel.onPowerWatts);
+        RFileIO::readBinary(inFile,channel.minimumPowerWatts);
+        RFileIO::readBinary(inFile,channel.maximumPowerWatts);
+        RFileIO::readBinary(inFile,channel.maximumPowerSlewWattsPerSecond);
+        RFileIO::readBinary(inFile,channel.maximumPowerSlewUnlimited);
+    }
+
+    uint sparseNodeCount = 0;
+    RFileIO::readBinary(inFile,sparseNodeCount);
+    if (sparseNodeCount > 1000000u)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive sparse thermal observation node count (%u).",sparseNodeCount);
+    result.sparseObservationNodeIds.resize(sparseNodeCount);
+    for (QString &nodeId : result.sparseObservationNodeIds)
+        RFileIO::readBinary(inFile,nodeId);
+
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile,
+                         const RStructuralThermalControlSetup &setup,
+                         bool addNewLine)
+{
+    setup.validate();
+    const bool writeThermalControlTail = outFile.getVersion() > RVersion(1,3,15);
+    if (!writeThermalControlTail)
+    {
+        if (setup.enabled)
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                         "Thermal control data cannot be written to a pre-1.3.16 model file.");
+        return;
+    }
+
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+
+    write(setup.enabled);
+    write(setup.thermalSubstepSeconds);
+    write(setup.thermalSubstepsPerMechanicalMacrostep);
+    write(setup.mechanicalMacrostepsPerControllerSample);
+    write(uint(setup.channels.size()));
+    for (const auto &channel : setup.channels)
+    {
+        write(channel.actuatorId);
+        write(channel.heaterNodeId);
+        write(channel.temperatureSensorId);
+        write(channel.temperatureSensorNodeId);
+        write(channel.turnOnBelowKelvin);
+        write(channel.turnOffAtOrAboveKelvin);
+        write(channel.onPowerWatts);
+        write(channel.minimumPowerWatts);
+        write(channel.maximumPowerWatts);
+        write(channel.maximumPowerSlewWattsPerSecond);
+        write(channel.maximumPowerSlewUnlimited);
+    }
+    write(uint(setup.sparseObservationNodeIds.size()));
+    for (const QString &nodeId : setup.sparseObservationNodeIds)
+        write(nodeId);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralThermalControlSetup &setup)
+{
+    setup.validate();
+    const bool writeThermalControlTail = outFile.getVersion() > RVersion(1,3,15);
+    if (!writeThermalControlTail)
+    {
+        if (setup.enabled)
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                         "Thermal control data cannot be written to a pre-1.3.16 model file.");
+        return;
+    }
+
+    RFileIO::writeBinary(outFile,setup.enabled);
+    RFileIO::writeBinary(outFile,setup.thermalSubstepSeconds);
+    RFileIO::writeBinary(outFile,setup.thermalSubstepsPerMechanicalMacrostep);
+    RFileIO::writeBinary(outFile,setup.mechanicalMacrostepsPerControllerSample);
+    RFileIO::writeBinary(outFile,uint(setup.channels.size()));
+    for (const auto &channel : setup.channels)
+    {
+        RFileIO::writeBinary(outFile,channel.actuatorId);
+        RFileIO::writeBinary(outFile,channel.heaterNodeId);
+        RFileIO::writeBinary(outFile,channel.temperatureSensorId);
+        RFileIO::writeBinary(outFile,channel.temperatureSensorNodeId);
+        RFileIO::writeBinary(outFile,channel.turnOnBelowKelvin);
+        RFileIO::writeBinary(outFile,channel.turnOffAtOrAboveKelvin);
+        RFileIO::writeBinary(outFile,channel.onPowerWatts);
+        RFileIO::writeBinary(outFile,channel.minimumPowerWatts);
+        RFileIO::writeBinary(outFile,channel.maximumPowerWatts);
+        RFileIO::writeBinary(outFile,channel.maximumPowerSlewWattsPerSecond);
+        RFileIO::writeBinary(outFile,channel.maximumPowerSlewUnlimited);
+    }
+    RFileIO::writeBinary(outFile,uint(setup.sparseObservationNodeIds.size()));
+    for (const QString &nodeId : setup.sparseObservationNodeIds)
+        RFileIO::writeBinary(outFile,nodeId);
 }
 
 void RFileIO::readAscii(RFile &inFile, RStructuralCableSetup &setup)

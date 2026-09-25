@@ -12,6 +12,7 @@
 #include "rml_structural_interaction.h"
 #include "rml_structural_cable_setup.h"
 #include "rml_structural_piezo_setup.h"
+#include "rml_structural_thermal_control_setup.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -47,6 +48,8 @@ class RProblemSetup
         RStructuralCableSetup structuralCableSetup;
         //! Optional model-bound static terminal piezo configuration.
         RStructuralPiezoSetup structuralPiezoSetup;
+        //! Optional model-bound multirate thermal-control configuration.
+        RStructuralThermalControlSetup structuralThermalControlSetup;
         //! Last accepted second-order transient state for disk restart.
         RStructuralDynamicsRestartData structuralDynamicsRestartData;
         //! Solver execution policy.
@@ -138,6 +141,10 @@ class RProblemSetup
         const RStructuralPiezoSetup &getStructuralPiezoSetup() const;
         RStructuralPiezoSetup &getStructuralPiezoSetup();
         void setStructuralPiezoSetup(const RStructuralPiezoSetup &setup);
+
+        const RStructuralThermalControlSetup &getStructuralThermalControlSetup() const;
+        RStructuralThermalControlSetup &getStructuralThermalControlSetup();
+        void setStructuralThermalControlSetup(const RStructuralThermalControlSetup &setup);
 
         const RStructuralDynamicsRestartData &getStructuralDynamicsRestartData() const;
         RStructuralDynamicsRestartData &getStructuralDynamicsRestartData();
