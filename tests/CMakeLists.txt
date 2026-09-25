@@ -28,6 +28,7 @@ set(range_model_lib_tests
     tst_surface
     tst_structural_product_profile
     tst_structural_cable_setup
+    tst_structural_piezo_setup
     tst_element_group_io
 )
 

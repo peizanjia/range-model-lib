@@ -2,6 +2,7 @@
 #include <rbl_logger.h>
 #include <rbl_utils.h>
 
+#include <cmath>
 #include <utility>
 #include <set>
 
@@ -4559,6 +4560,10 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readAscii(inFile,problemSetup.structuralCableSetup);
     else
         problemSetup.structuralCableSetup = RStructuralCableSetup();
+    if (inFile.getVersion() > RVersion(1,3,13))
+        RFileIO::readAscii(inFile,problemSetup.structuralPiezoSetup);
+    else
+        problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
@@ -4610,6 +4615,10 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         RFileIO::readBinary(inFile,problemSetup.structuralCableSetup);
     else
         problemSetup.structuralCableSetup = RStructuralCableSetup();
+    if (inFile.getVersion() > RVersion(1,3,13))
+        RFileIO::readBinary(inFile,problemSetup.structuralPiezoSetup);
+    else
+        problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
@@ -4664,6 +4673,8 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralControlSetup,addNewLine);
     if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralCableSetup,addNewLine);
+    if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoSetup,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
@@ -4680,6 +4691,7 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralDynamicsRestartData);
     RFileIO::writeBinary(outFile,problemSetup.structuralControlSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralCableSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoSetup);
 }
 
 
@@ -4939,6 +4951,223 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralCableSetup &setup
     RFileIO::writeBinary(outFile,setup.maxLineSearchIterations);
     RFileIO::writeBinary(outFile,setup.absoluteForceTolerance);
     RFileIO::writeBinary(outFile,setup.relativeForceTolerance);
+}
+
+void RFileIO::readAscii(RFile &inFile, RStructuralPiezoSetup &setup)
+{
+    RStructuralPiezoSetup result;
+    uint portCount = 0;
+    QTextStream &stream = inFile.getTextStream();
+    stream.skipWhiteSpace();
+    QChar encodedEnabled;
+    stream >> encodedEnabled;
+    if (stream.status() != QTextStream::Ok)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Failed to read structural piezo enabled flag.");
+    }
+    if (encodedEnabled.unicode() == 0 || encodedEnabled == QLatin1Char('0'))
+    {
+        result.enabled = false;
+    }
+    else if (encodedEnabled.unicode() == 1 || encodedEnabled == QLatin1Char('1'))
+    {
+        result.enabled = true;
+    }
+    else
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Invalid structural piezo enabled flag.");
+    }
+    RFileIO::readAscii(inFile,result.meshFingerprint);
+    RFileIO::readAscii(inFile,portCount);
+    if (portCount > 1000000u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive structural piezo port count (%u).",portCount);
+    }
+    result.ports.resize(portCount);
+    auto readFiniteDouble = [&](const char *field)
+    {
+        QString token;
+        stream >> token;
+        if (stream.status() != QTextStream::Ok)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Failed to read structural piezo %s.",field);
+        }
+        bool ok = false;
+        const double value = token.toDouble(&ok);
+        if (!ok || !std::isfinite(value))
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural piezo %s.",field);
+        }
+        return value;
+    };
+    auto readPortId = [&]()
+    {
+        stream.skipWhiteSpace();
+        if (stream.read(1) != QStringLiteral("\""))
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural piezo port ID encoding.");
+        }
+
+        QString id;
+        bool closed = false;
+        while (!stream.atEnd())
+        {
+            const QString character = stream.read(1);
+            if (character.isEmpty()) break;
+            const QChar value = character.at(0);
+            if (value == QLatin1Char('"'))
+            {
+                closed = true;
+                break;
+            }
+            if (value == QLatin1Char('\n') || value == QLatin1Char('\r') || value == QChar(0))
+            {
+                throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                             "Invalid structural piezo port ID encoding.");
+            }
+            id.append(value);
+            if (id.toUtf8().size() > 4096)
+            {
+                throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                             "Structural piezo port ID exceeds the maximum length.");
+            }
+        }
+        if (!closed)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Unterminated structural piezo port ID.");
+        }
+        return id;
+    };
+    for (RStructuralPiezoPort &port : result.ports)
+    {
+        port.id = readPortId();
+        RFileIO::readAscii(inFile,port.elementId);
+        port.coupling = readFiniteDouble("coupling");
+        port.permittivity = readFiniteDouble("permittivity");
+        port.voltage = readFiniteDouble("voltage");
+    }
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralPiezoSetup &setup)
+{
+    RStructuralPiezoSetup result;
+    uint portCount = 0;
+    auto readExact = [&](void *destination, qint64 byteCount, const char *field)
+    {
+        if (byteCount < 0 || inFile.read(static_cast<char*>(destination),byteCount) != byteCount)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Truncated structural piezo binary data while reading %s.",field);
+        }
+    };
+    auto readString = [&](uint maximumBytes, const char *field)
+    {
+        uint byteCount = 0;
+        readExact(&byteCount,qint64(sizeof(byteCount)),field);
+        if (byteCount > maximumBytes)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid structural piezo string length (%u) for %s.",byteCount,field);
+        }
+        const QByteArray bytes = inFile.read(qint64(byteCount));
+        if (bytes.size() != qsizetype(byteCount))
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Truncated structural piezo binary data while reading %s.",field);
+        }
+        const QString value = QString::fromUtf8(bytes.constData(),bytes.size());
+        if (value.toUtf8() != bytes)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Invalid UTF-8 structural piezo string in %s.",field);
+        }
+        return value;
+    };
+
+    static_assert(sizeof(bool) == sizeof(unsigned char),
+                  "Binary model format requires a one-byte bool representation.");
+    unsigned char encodedEnabled = 0;
+    readExact(&encodedEnabled,qint64(sizeof(encodedEnabled)),"enabled flag");
+    if (encodedEnabled > 1u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Invalid structural piezo enabled flag (%u).",unsigned(encodedEnabled));
+    }
+    result.enabled = encodedEnabled != 0;
+    result.meshFingerprint = readString(64u,"mesh fingerprint");
+    readExact(&portCount,qint64(sizeof(portCount)),"port count");
+    if (portCount > 1000000u)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Excessive structural piezo port count (%u).",portCount);
+    }
+    result.ports.resize(portCount);
+    for (RStructuralPiezoPort &port : result.ports)
+    {
+        port.id = readString(4096u,"port ID");
+        readExact(&port.elementId,qint64(sizeof(port.elementId)),"port element ID");
+        readExact(&port.coupling,qint64(sizeof(port.coupling)),"piezo coupling");
+        readExact(&port.permittivity,qint64(sizeof(port.permittivity)),"piezo permittivity");
+        readExact(&port.voltage,qint64(sizeof(port.voltage)),"port voltage");
+    }
+    result.validate();
+    setup = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup, bool addNewLine)
+{
+    setup.validate();
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        RFileIO::writeAscii(outFile,value,addNewLine);
+        first = false;
+    };
+    write(setup.enabled);
+    write(setup.meshFingerprint);
+    write(uint(setup.ports.size()));
+    for (const RStructuralPiezoPort &port : setup.ports)
+    {
+        write(QStringLiteral("\"") + port.id + QStringLiteral("\""));
+        write(port.elementId);
+        write(port.coupling);
+        write(port.permittivity);
+        write(port.voltage);
+    }
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup)
+{
+    setup.validate();
+    RFileIO::writeBinary(outFile,setup.enabled);
+    RFileIO::writeBinary(outFile,setup.meshFingerprint);
+    RFileIO::writeBinary(outFile,uint(setup.ports.size()));
+    for (const RStructuralPiezoPort &port : setup.ports)
+    {
+        RFileIO::writeBinary(outFile,port.id);
+        RFileIO::writeBinary(outFile,port.elementId);
+        RFileIO::writeBinary(outFile,port.coupling);
+        RFileIO::writeBinary(outFile,port.permittivity);
+        RFileIO::writeBinary(outFile,port.voltage);
+    }
 }
 
 void RFileIO::readAscii(RFile &inFile, RStructuralDynamicsSetup &setup)

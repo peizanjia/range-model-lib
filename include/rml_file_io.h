@@ -45,6 +45,7 @@
 #include "rml_structural_control_setup.h"
 #include "rml_structural_cable_setup.h"
 #include "rml_structural_dynamics_restart_data.h"
+#include "rml_structural_piezo_setup.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -820,6 +821,11 @@ class RFileIO
         static void readBinary(RFile &inFile, RStructuralCableSetup &setup);
         static void writeAscii(RSaveFile &outFile, const RStructuralCableSetup &setup, bool addNewLine = true);
         static void writeBinary(RSaveFile &outFile, const RStructuralCableSetup &setup);
+
+        static void readAscii(RFile &inFile, RStructuralPiezoSetup &setup);
+        static void readBinary(RFile &inFile, RStructuralPiezoSetup &setup);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup);
 
         static void readAscii(RFile &inFile, RStructuralDynamicsRestartData &data);
         static void readBinary(RFile &inFile, RStructuralDynamicsRestartData &data);

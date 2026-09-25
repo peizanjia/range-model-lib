@@ -11,6 +11,7 @@
 #include "rml_structural_dynamics_restart_data.h"
 #include "rml_structural_interaction.h"
 #include "rml_structural_cable_setup.h"
+#include "rml_structural_piezo_setup.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -44,6 +45,8 @@ class RProblemSetup
         RStructuralControlSetup structuralControlSetup;
         //! Optional model-bound cable form-finding configuration.
         RStructuralCableSetup structuralCableSetup;
+        //! Optional model-bound static terminal piezo configuration.
+        RStructuralPiezoSetup structuralPiezoSetup;
         //! Last accepted second-order transient state for disk restart.
         RStructuralDynamicsRestartData structuralDynamicsRestartData;
         //! Solver execution policy.
@@ -131,6 +134,10 @@ class RProblemSetup
         const RStructuralCableSetup &getStructuralCableSetup() const;
         RStructuralCableSetup &getStructuralCableSetup();
         void setStructuralCableSetup(const RStructuralCableSetup &setup);
+
+        const RStructuralPiezoSetup &getStructuralPiezoSetup() const;
+        RStructuralPiezoSetup &getStructuralPiezoSetup();
+        void setStructuralPiezoSetup(const RStructuralPiezoSetup &setup);
 
         const RStructuralDynamicsRestartData &getStructuralDynamicsRestartData() const;
         RStructuralDynamicsRestartData &getStructuralDynamicsRestartData();

@@ -147,7 +147,8 @@ const RVariableDesc variableDesc [R_VARIABLE_N_TYPES] =
     { "var-angular_acceleration"         , "Angular acceleration",                     "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS },
     { "var-angular_acceleration_x"       , "Angular acceleration about X axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
     { "var-angular_acceleration_y"       , "Angular acceleration about Y axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
-    { "var-angular_acceleration_z"       , "Angular acceleration about Z axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE }
+    { "var-angular_acceleration_z"       , "Angular acceleration about Z axis",        "rad/s^2",    0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_NONE },
+    { "var-electric_charge"              , "Right electrode charge",                    "C",          0.0,     R_VARIABLE_DATA_DOUBLE,  R_PROBLEM_STRESS }
 };
 
 

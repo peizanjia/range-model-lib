@@ -16,6 +16,7 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->structuralDynamicsSetup = pProblemSetup->structuralDynamicsSetup;
         this->structuralControlSetup = pProblemSetup->structuralControlSetup;
         this->structuralCableSetup = pProblemSetup->structuralCableSetup;
+        this->structuralPiezoSetup = pProblemSetup->structuralPiezoSetup;
         this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
@@ -192,6 +193,22 @@ void RProblemSetup::setStructuralCableSetup(const RStructuralCableSetup &setup)
 {
     setup.validate();
     this->structuralCableSetup = setup;
+}
+
+const RStructuralPiezoSetup &RProblemSetup::getStructuralPiezoSetup() const
+{
+    return this->structuralPiezoSetup;
+}
+
+RStructuralPiezoSetup &RProblemSetup::getStructuralPiezoSetup()
+{
+    return this->structuralPiezoSetup;
+}
+
+void RProblemSetup::setStructuralPiezoSetup(const RStructuralPiezoSetup &setup)
+{
+    setup.validate();
+    this->structuralPiezoSetup = setup;
 }
 
 const RStructuralDynamicsRestartData &RProblemSetup::getStructuralDynamicsRestartData() const
