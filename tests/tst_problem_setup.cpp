@@ -313,7 +313,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.14"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.15"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;

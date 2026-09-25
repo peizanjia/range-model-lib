@@ -7,6 +7,30 @@
 
 class RModel;
 
+//! Electrical formulation stored by a structural piezo configuration.
+enum class RStructuralPiezoElectricalMode : int
+{
+    //! Version 1.3.14 terminal-to-terminal constant voltage formulation.
+    LegacyTerminalVoltage = 0,
+    //! Nodal electric potential formulation with nodal conductor charge data.
+    NodalPotential = 1
+};
+
+//! Type of an electrical nodal boundary condition.
+enum class RStructuralPiezoBoundaryType : int
+{
+    Potential = 0,
+    ConductorCharge = 1
+};
+
+//! Prescribed electrical potential (V) or conductor charge (C) at one node.
+struct RStructuralPiezoNodeBoundary
+{
+    uint nodeId = 0;
+    RStructuralPiezoBoundaryType type = RStructuralPiezoBoundaryType::Potential;
+    double value = 0.0;
+};
+
 //! A constant-voltage terminal port associated with one native TRUSS1 element.
 struct RStructuralPiezoPort
 {
@@ -20,18 +44,20 @@ struct RStructuralPiezoPort
     double voltage = 0.0;
 };
 
-//! Model-bound input for a static, terminal 1-D piezoelectric configuration.
+//! Model-bound input for a static 1-D piezoelectric configuration.
 //!
-//! The mesh fingerprint uses the restart fingerprint's existing v1 encoding:
-//! element order and connectivity are exact, while coordinates are normalized
-//! to five significant digits. It is an anti-misattachment guard, not an exact
-//! geometric identity check. This configuration alone does not enable a
-//! solver capability or claim that a physical analysis has been performed.
+//! LegacyTerminalVoltage retains the restart fingerprint's five-significant-
+//! digit coordinate binding. NodalPotential uses an exact geometry and native
+//! connectivity fingerprint that also binds port direction and coefficients.
 struct RStructuralPiezoSetup
 {
     bool enabled = false;
     QString meshFingerprint;
     std::vector<RStructuralPiezoPort> ports;
+    //! Defaults to the v1.3.14-compatible terminal voltage formulation.
+    RStructuralPiezoElectricalMode electricalMode = RStructuralPiezoElectricalMode::LegacyTerminalVoltage;
+    //! Used only by NodalPotential; each node may have at most one condition.
+    std::vector<RStructuralPiezoNodeBoundary> nodalBoundaryConditions;
 
     //! Validate port values and any stored fingerprint without requiring a model.
     void validate() const;

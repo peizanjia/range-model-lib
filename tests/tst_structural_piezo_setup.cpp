@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 #include "rml_file_io.h"
 #include "rml_model.h"
@@ -19,6 +20,22 @@ static RModel makePiezoSetupModel(RElementType type = R_ELEMENT_TRUSS1)
     element.setNodeId(0,0);
     element.setNodeId(1,1);
     model.addElement(element);
+    return model;
+}
+
+static RModel makePiezoNetworkModel()
+{
+    RModel model;
+    model.addNode(RNode(0.0,0.0,0.0));
+    model.addNode(RNode(1.000000000000009,0.0,0.0));
+    model.addNode(RNode(2.23456789012345,0.0,0.0));
+    for (uint i = 0; i < 2; ++i)
+    {
+        RElement element(R_ELEMENT_TRUSS1);
+        element.setNodeId(0,i);
+        element.setNodeId(1,i+1);
+        model.addElement(element);
+    }
     return model;
 }
 
@@ -42,11 +59,17 @@ private slots:
     void defaultsAndCopy();
     void modelRoundTrip_data();
     void modelRoundTrip();
+    void nodalPotentialModelRoundTrip_data();
+    void nodalPotentialModelRoundTrip();
+    void readsVersion1314AsLegacy_data();
+    void readsVersion1314AsLegacy();
     void readsVersion1313WithoutPiezoSetup_data();
     void readsVersion1313WithoutPiezoSetup();
     void rejectsTruncatedAndInvalidBinaryWithoutMutation();
     void rejectsInvalidValuesAndTopology();
     void rejectsStaleMeshBinding();
+    void validatesNodalNetworkAndExactBinding();
+    void rejectsNodalWriteToLegacyVersion();
     void electricChargeVariableContract();
 };
 
@@ -91,7 +114,7 @@ void TestStructuralPiezoSetup::modelRoundTrip_data()
 void TestStructuralPiezoSetup::modelRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.14"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.15"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 
@@ -140,6 +163,97 @@ void TestStructuralPiezoSetup::modelRoundTrip()
         // setup scalars above use their dedicated 17-digit writer.
         QVERIFY(std::abs(restoredCharge.getValue(0)+2.345678901234567) < 2.0e-6);
     }
+}
+
+void TestStructuralPiezoSetup::nodalPotentialModelRoundTrip_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-nodal-potential") << false;
+    QTest::newRow("binary-nodal-potential") << true;
+}
+
+void TestStructuralPiezoSetup::nodalPotentialModelRoundTrip()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    RModel source = makePiezoNetworkModel();
+    RStructuralPiezoSetup piezo;
+    piezo.enabled = true;
+    piezo.electricalMode = RStructuralPiezoElectricalMode::NodalPotential;
+    piezo.ports = {makePiezoPort(QStringLiteral("left segment"),0),
+                   makePiezoPort(QStringLiteral("right segment"),1)};
+    for (RStructuralPiezoPort &port : piezo.ports) port.voltage = 0.0;
+    piezo.nodalBoundaryConditions = {
+        {0,RStructuralPiezoBoundaryType::Potential,17.123456789012345},
+        {2,RStructuralPiezoBoundaryType::ConductorCharge,-2.345678901234567e-6}
+    };
+    piezo.bindToModel(source);
+    source.getProblemSetup().setStructuralPiezoSetup(piezo);
+
+    const QString extension = RModel::getDefaultFileExtension(binary);
+    const QString path = directory.filePath(QStringLiteral("piezo-nodal.") + extension);
+    RModel restored;
+    QCOMPARE(source.write(path,false),path);
+    restored.read(path);
+
+    const RStructuralPiezoSetup &actual = restored.getProblemSetup().getStructuralPiezoSetup();
+    QCOMPARE(actual.enabled,true);
+    QCOMPARE(int(actual.electricalMode),int(RStructuralPiezoElectricalMode::NodalPotential));
+    QCOMPARE(actual.meshFingerprint,piezo.meshFingerprint);
+    QCOMPARE(actual.ports.size(),size_t(2));
+    QCOMPARE(actual.ports[0].coupling,piezo.ports[0].coupling);
+    QCOMPARE(actual.ports[1].permittivity,piezo.ports[1].permittivity);
+    QCOMPARE(actual.nodalBoundaryConditions.size(),size_t(2));
+    QCOMPARE(actual.nodalBoundaryConditions[0].nodeId,uint(0));
+    QCOMPARE(int(actual.nodalBoundaryConditions[0].type),int(RStructuralPiezoBoundaryType::Potential));
+    QCOMPARE(actual.nodalBoundaryConditions[0].value,piezo.nodalBoundaryConditions[0].value);
+    QCOMPARE(actual.nodalBoundaryConditions[1].nodeId,uint(2));
+    QCOMPARE(int(actual.nodalBoundaryConditions[1].type),int(RStructuralPiezoBoundaryType::ConductorCharge));
+    QCOMPARE(actual.nodalBoundaryConditions[1].value,piezo.nodalBoundaryConditions[1].value);
+    actual.validate(restored);
+}
+
+void TestStructuralPiezoSetup::readsVersion1314AsLegacy_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii-1.3.14") << false;
+    QTest::newRow("binary-1.3.14") << true;
+}
+
+void TestStructuralPiezoSetup::readsVersion1314AsLegacy()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(binary ? QStringLiteral("legacy-1.3.14.bin")
+                                                   : QStringLiteral("legacy-1.3.14.txt"));
+
+    RModel model = makePiezoSetupModel();
+    RStructuralPiezoSetup source;
+    source.enabled = true;
+    source.ports = {makePiezoPort(QStringLiteral("legacy terminal"))};
+    source.bindToModel(model);
+    {
+        RSaveFile out(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        out.setVersion(RVersion(1,3,14));
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        if (binary) RFileIO::writeBinary(out,source);
+        else RFileIO::writeAscii(out,source);
+        QVERIFY(out.commit());
+    }
+
+    RFile in(path,binary ? RFile::BINARY : RFile::ASCII);
+    in.setVersion(RVersion(1,3,14));
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    RStructuralPiezoSetup restored;
+    if (binary) RFileIO::readBinary(in,restored);
+    else RFileIO::readAscii(in,restored);
+    QCOMPARE(int(restored.electricalMode),int(RStructuralPiezoElectricalMode::LegacyTerminalVoltage));
+    QVERIFY(restored.nodalBoundaryConditions.empty());
+    QCOMPARE(restored.ports.size(),size_t(1));
+    QCOMPARE(restored.ports[0].voltage,source.ports[0].voltage);
 }
 
 void TestStructuralPiezoSetup::readsVersion1313WithoutPiezoSetup_data()
@@ -400,8 +514,115 @@ void TestStructuralPiezoSetup::rejectsStaleMeshBinding()
     setup.bindToModel(model);
     setup.validate(model);
 
+    model.getNode(1).setX(1.00000001);
+    setup.validate(model); // Legacy binding keeps its historical five-digit tolerance.
+
     model.getNode(1).setX(1.1);
     QVERIFY_EXCEPTION_THROWN(setup.validate(model),RError);
+}
+
+void TestStructuralPiezoSetup::validatesNodalNetworkAndExactBinding()
+{
+    RModel model = makePiezoNetworkModel();
+    RStructuralPiezoSetup setup;
+    setup.enabled = true;
+    setup.electricalMode = RStructuralPiezoElectricalMode::NodalPotential;
+    setup.ports = {makePiezoPort(QStringLiteral("segment-1"),0),
+                   makePiezoPort(QStringLiteral("segment-2"),1)};
+    for (RStructuralPiezoPort &port : setup.ports) port.voltage = 0.0;
+    setup.nodalBoundaryConditions = {
+        {0,RStructuralPiezoBoundaryType::Potential,0.0},
+        {2,RStructuralPiezoBoundaryType::ConductorCharge,1.5e-6}
+    };
+    setup.bindToModel(model);
+    setup.validate(model);
+
+    RModel perturbed = model;
+    perturbed.getNode(1).setX(1.0000000001);
+    QVERIFY_EXCEPTION_THROWN(setup.validate(perturbed),RError);
+
+    RModel reversed = model;
+    reversed.getElement(1).setNodeId(0,2);
+    reversed.getElement(1).setNodeId(1,1);
+    QVERIFY_EXCEPTION_THROWN(setup.validate(reversed),RError);
+
+    RStructuralPiezoSetup changedMaterial = setup;
+    changedMaterial.ports[0].coupling *= 1.01;
+    QVERIFY_EXCEPTION_THROWN(changedMaterial.validate(model),RError);
+    changedMaterial = setup;
+    changedMaterial.ports[0].permittivity *= 1.01;
+    QVERIFY_EXCEPTION_THROWN(changedMaterial.validate(model),RError);
+
+    RStructuralPiezoSetup duplicateBoundary = setup;
+    duplicateBoundary.nodalBoundaryConditions.push_back(
+        {0,RStructuralPiezoBoundaryType::ConductorCharge,0.0});
+    QVERIFY_EXCEPTION_THROWN(duplicateBoundary.validate(),RError);
+
+    RStructuralPiezoSetup mixedDrive = setup;
+    mixedDrive.ports[0].voltage = 5.0;
+    QVERIFY_EXCEPTION_THROWN(mixedDrive.validate(),RError);
+
+    RModel disconnected;
+    disconnected.addNode(RNode(0.0,0.0,0.0));
+    disconnected.addNode(RNode(1.0,0.0,0.0));
+    disconnected.addNode(RNode(0.0,1.0,0.0));
+    disconnected.addNode(RNode(1.0,1.0,0.0));
+    for (const auto endpoints : {std::pair<uint,uint>{0,1},std::pair<uint,uint>{2,3}})
+    {
+        RElement element(R_ELEMENT_TRUSS1);
+        element.setNodeId(0,endpoints.first);
+        element.setNodeId(1,endpoints.second);
+        disconnected.addElement(element);
+    }
+    RStructuralPiezoSetup missingComponentGauge;
+    missingComponentGauge.enabled = true;
+    missingComponentGauge.electricalMode = RStructuralPiezoElectricalMode::NodalPotential;
+    missingComponentGauge.ports = {makePiezoPort(QStringLiteral("component-1"),0),
+                                   makePiezoPort(QStringLiteral("component-2"),1)};
+    for (RStructuralPiezoPort &port : missingComponentGauge.ports) port.voltage = 0.0;
+    missingComponentGauge.nodalBoundaryConditions = {
+        {0,RStructuralPiezoBoundaryType::Potential,0.0},
+        {3,RStructuralPiezoBoundaryType::ConductorCharge,0.0}
+    };
+    QVERIFY_EXCEPTION_THROWN(missingComponentGauge.bindToModel(disconnected),RError);
+    QVERIFY(missingComponentGauge.meshFingerprint.isEmpty());
+    missingComponentGauge.nodalBoundaryConditions.push_back(
+        {2,RStructuralPiezoBoundaryType::Potential,0.0});
+    missingComponentGauge.bindToModel(disconnected);
+    missingComponentGauge.validate(disconnected);
+}
+
+void TestStructuralPiezoSetup::rejectsNodalWriteToLegacyVersion()
+{
+    RModel model = makePiezoNetworkModel();
+    RStructuralPiezoSetup setup;
+    setup.enabled = true;
+    setup.electricalMode = RStructuralPiezoElectricalMode::NodalPotential;
+    setup.ports = {makePiezoPort(QStringLiteral("port-1"),0),
+                   makePiezoPort(QStringLiteral("port-2"),1)};
+    for (RStructuralPiezoPort &port : setup.ports) port.voltage = 0.0;
+    setup.nodalBoundaryConditions = {{0,RStructuralPiezoBoundaryType::Potential,0.0}};
+    setup.bindToModel(model);
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString asciiPath = directory.filePath(QStringLiteral("lossy.txt"));
+    {
+        RSaveFile out(asciiPath,RSaveFile::ASCII);
+        out.setVersion(RVersion(1,3,14));
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        QVERIFY_EXCEPTION_THROWN(RFileIO::writeAscii(out,setup),RError);
+        out.cancelWriting();
+    }
+
+    const QString binaryPath = directory.filePath(QStringLiteral("lossy.bin"));
+    {
+        RSaveFile out(binaryPath,RSaveFile::BINARY);
+        out.setVersion(RVersion(1,3,14));
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        QVERIFY_EXCEPTION_THROWN(RFileIO::writeBinary(out,setup),RError);
+        out.cancelWriting();
+    }
 }
 
 void TestStructuralPiezoSetup::electricChargeVariableContract()

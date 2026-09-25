@@ -1,7 +1,13 @@
+#include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <limits>
+#include <map>
 #include <set>
+#include <vector>
 
 #include <QByteArray>
+#include <QCryptographicHash>
 
 #include <rbl_error.h>
 
@@ -12,6 +18,7 @@
 namespace
 {
 constexpr std::size_t maximumPiezoPortCount = 1000000u;
+constexpr std::size_t maximumPiezoBoundaryCount = 1000000u;
 constexpr qsizetype maximumPiezoPortIdBytes = 4096;
 
 bool isSha256Fingerprint(const QString &value)
@@ -28,6 +35,41 @@ bool isSha256Fingerprint(const QString &value)
     return true;
 }
 
+void appendUInt(QByteArray &bytes, uint value)
+{
+    for (unsigned int byte = 0; byte < 4; ++byte)
+    {
+        bytes.append(char((value >> (8 * byte)) & 0xffu));
+    }
+}
+
+void appendExactDouble(QByteArray &bytes, double value)
+{
+    static_assert(sizeof(double) == sizeof(quint64),
+                  "Exact piezo fingerprint requires IEEE-754 binary64 doubles.");
+    static_assert(std::numeric_limits<double>::is_iec559,
+                  "Exact piezo fingerprint requires IEEE-754 binary64 doubles.");
+
+    quint64 bits = 0;
+    std::memcpy(&bits,&value,sizeof(bits));
+    for (unsigned int byte = 0; byte < 8; ++byte)
+    {
+        bytes.append(char((bits >> (8 * byte)) & 0xffu));
+    }
+}
+
+void appendUtf8(QByteArray &bytes, const QString &value)
+{
+    const QByteArray encoded = value.toUtf8();
+    appendUInt(bytes,uint(encoded.size()));
+    bytes.append(encoded);
+}
+
+QString digest(const QByteArray &bytes)
+{
+    return QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());
+}
+
 void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
 {
     if (setup.ports.size() > maximumPiezoPortCount)
@@ -35,6 +77,20 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
         throw RError(RError::Type::Application,R_ERROR_REF,
                      "Excessive structural piezo port count (%llu).",
                      static_cast<unsigned long long>(setup.ports.size()));
+    }
+    if (setup.nodalBoundaryConditions.size() > maximumPiezoBoundaryCount)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Excessive structural piezo nodal boundary count (%llu).",
+                     static_cast<unsigned long long>(setup.nodalBoundaryConditions.size()));
+    }
+
+    if (setup.electricalMode != RStructuralPiezoElectricalMode::LegacyTerminalVoltage &&
+        setup.electricalMode != RStructuralPiezoElectricalMode::NodalPotential)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Unsupported structural piezo electrical mode (%d).",
+                     int(setup.electricalMode));
     }
 
     std::set<QString> portIds;
@@ -66,12 +122,56 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
             throw RError(RError::Type::Application,R_ERROR_REF,
                          "Structural piezo coupling and voltage must be finite, and permittivity must be finite and positive.");
         }
+        if (setup.electricalMode == RStructuralPiezoElectricalMode::NodalPotential &&
+            port.voltage != 0.0)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Nodal-potential piezo setup cannot also specify legacy terminal voltage.");
+        }
     }
 
+    std::set<uint> boundaryNodeIds;
+    bool hasPotentialBoundary = false;
+    for (const RStructuralPiezoNodeBoundary &boundary : setup.nodalBoundaryConditions)
+    {
+        if (!boundaryNodeIds.insert(boundary.nodeId).second)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural piezo nodal boundary conditions must use unique node IDs.");
+        }
+        if (!std::isfinite(boundary.value))
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural piezo nodal boundary value must be finite.");
+        }
+        if (boundary.type == RStructuralPiezoBoundaryType::Potential)
+        {
+            hasPotentialBoundary = true;
+        }
+        else if (boundary.type != RStructuralPiezoBoundaryType::ConductorCharge)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Unsupported structural piezo nodal boundary type (%d).",
+                         int(boundary.type));
+        }
+    }
+
+    if (setup.electricalMode == RStructuralPiezoElectricalMode::LegacyTerminalVoltage &&
+        !setup.nodalBoundaryConditions.empty())
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Legacy terminal-voltage piezo setup cannot contain nodal electrical boundary conditions.");
+    }
     if (setup.enabled && setup.ports.empty())
     {
         throw RError(RError::Type::Application,R_ERROR_REF,
                      "Enabled structural piezo setup requires at least one port.");
+    }
+    if (setup.enabled && setup.electricalMode == RStructuralPiezoElectricalMode::NodalPotential &&
+        !hasPotentialBoundary)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Enabled nodal-potential piezo setup requires a potential gauge boundary.");
     }
     if ((requireFingerprint && setup.enabled) || !setup.meshFingerprint.isEmpty())
     {
@@ -85,6 +185,7 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
 
 void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
 {
+    std::map<uint,std::set<uint>> electricalGraph;
     for (const RStructuralPiezoPort &port : setup.ports)
     {
         if (port.elementId >= model.getNElements())
@@ -132,7 +233,114 @@ void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
                          "Structural piezo port element %u has non-finite endpoint coordinates or zero length.",
                          port.elementId);
         }
+        electricalGraph[firstNodeId].insert(secondNodeId);
+        electricalGraph[secondNodeId].insert(firstNodeId);
     }
+
+    if (setup.electricalMode != RStructuralPiezoElectricalMode::NodalPotential)
+    {
+        return;
+    }
+
+    for (const RStructuralPiezoNodeBoundary &boundary : setup.nodalBoundaryConditions)
+    {
+        if (electricalGraph.find(boundary.nodeId) == electricalGraph.end())
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural piezo nodal boundary references a node outside the piezo network (%u).",
+                         boundary.nodeId);
+        }
+    }
+
+    std::map<uint,RStructuralPiezoBoundaryType> boundaryTypes;
+    for (const RStructuralPiezoNodeBoundary &boundary : setup.nodalBoundaryConditions)
+    {
+        boundaryTypes.emplace(boundary.nodeId,boundary.type);
+    }
+
+    std::set<uint> visited;
+    for (const auto &entry : electricalGraph)
+    {
+        if (visited.find(entry.first) != visited.end()) continue;
+        std::vector<uint> pending{entry.first};
+        visited.insert(entry.first);
+        bool hasPotentialGauge = false;
+        while (!pending.empty())
+        {
+            const uint nodeId = pending.back();
+            pending.pop_back();
+            const auto boundary = boundaryTypes.find(nodeId);
+            if (boundary != boundaryTypes.end() &&
+                boundary->second == RStructuralPiezoBoundaryType::Potential)
+            {
+                hasPotentialGauge = true;
+            }
+            for (const uint connectedNodeId : electricalGraph.at(nodeId))
+            {
+                if (visited.insert(connectedNodeId).second)
+                {
+                    pending.push_back(connectedNodeId);
+                }
+            }
+        }
+        if (!hasPotentialGauge)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Every connected piezo electrical component requires a prescribed potential gauge.");
+        }
+    }
+}
+
+QString computeExactNodalFingerprint(const RModel &model,
+                                     const std::vector<RStructuralPiezoPort> &ports)
+{
+    QByteArray bytes("range-fea/piezo/nodal-potential/exact/v1");
+    appendUInt(bytes,model.getNNodes());
+    for (uint nodeId = 0; nodeId < model.getNNodes(); ++nodeId)
+    {
+        const RNode &node = model.getNode(nodeId);
+        if (!std::isfinite(node.getX()) || !std::isfinite(node.getY()) || !std::isfinite(node.getZ()))
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Nodal-potential piezo fingerprint requires finite model coordinates.");
+        }
+        appendExactDouble(bytes,node.getX());
+        appendExactDouble(bytes,node.getY());
+        appendExactDouble(bytes,node.getZ());
+    }
+    appendUInt(bytes,model.getNElements());
+    for (uint elementId = 0; elementId < model.getNElements(); ++elementId)
+    {
+        const RElement &element = model.getElement(elementId);
+        appendUInt(bytes,uint(element.getType()));
+        appendUInt(bytes,element.size());
+        for (uint localNode = 0; localNode < element.size(); ++localNode)
+        {
+            appendUInt(bytes,element.getNodeId(localNode));
+        }
+    }
+
+    std::vector<const RStructuralPiezoPort*> orderedPorts;
+    orderedPorts.reserve(ports.size());
+    for (const RStructuralPiezoPort &port : ports) orderedPorts.push_back(&port);
+    std::sort(orderedPorts.begin(),orderedPorts.end(),[](const auto *first, const auto *second)
+    {
+        return first->elementId < second->elementId;
+    });
+    appendUInt(bytes,uint(orderedPorts.size()));
+    for (const RStructuralPiezoPort *port : orderedPorts)
+    {
+        appendUtf8(bytes,port->id);
+        appendUInt(bytes,port->elementId);
+        const RElement &element = model.getElement(port->elementId);
+        // Retain native endpoint order because the constitutive coupling is signed.
+        appendUInt(bytes,element.getNodeId(0));
+        appendUInt(bytes,element.getNodeId(1));
+        appendExactDouble(bytes,port->coupling);
+        appendExactDouble(bytes,port->permittivity);
+        appendExactDouble(bytes,port->voltage);
+    }
+    return digest(bytes);
 }
 }
 
@@ -146,19 +354,26 @@ void RStructuralPiezoSetup::validate(const RModel &model) const
     this->validate();
     validateTopology(*this,model);
 
-    if (!this->meshFingerprint.isEmpty() &&
-        this->meshFingerprint != RStructuralDynamicsRestartData::computeMeshFingerprint(model))
+    if (!this->meshFingerprint.isEmpty())
     {
-        throw RError(RError::Type::Application,R_ERROR_REF,
-                     "Structural piezo setup is bound to a different mesh.");
+        const QString expectedFingerprint = this->electricalMode == RStructuralPiezoElectricalMode::NodalPotential
+            ? computeExactNodalFingerprint(model,this->ports)
+            : RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+        if (this->meshFingerprint != expectedFingerprint)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural piezo setup is bound to a different mesh or port configuration.");
+        }
     }
 }
 
 void RStructuralPiezoSetup::bindToModel(const RModel &model)
 {
-    // Validate port values and topology before replacing any previous binding.
+    // Validate values and topology before replacing any previous binding.
     validateValues(*this,false);
     validateTopology(*this,model);
-    this->meshFingerprint = RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+    this->meshFingerprint = this->electricalMode == RStructuralPiezoElectricalMode::NodalPotential
+        ? computeExactNodalFingerprint(model,this->ports)
+        : RStructuralDynamicsRestartData::computeMeshFingerprint(model);
     this->validate(model);
 }

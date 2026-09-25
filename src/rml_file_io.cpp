@@ -2715,6 +2715,15 @@ void RFileIO::readBinary(RFile &inFile, RNode &node)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RNode &node, bool addNewLine)
 {
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    // Preserve exact model coordinates so exact mesh bindings survive ASCII round trips.
+    outFile.getTextStream().setRealNumberPrecision(17);
+
     RFileIO::writeAscii(outFile,node.x,addNewLine);
     if (!addNewLine)
     {
@@ -3879,6 +3888,7 @@ void RFileIO::readBinary(RFile &inFile, RFileHeader &fileHeader)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RFileHeader &fileHeader, bool addNewLine)
 {
+    outFile.setVersion(fileHeader.getVersion());
     RFileIO::writeAscii(outFile,fileHeader.version,addNewLine);
     if (!addNewLine)
     {
@@ -3894,6 +3904,7 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RFileHeader &fileHeader, bool
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RFileHeader &fileHeader)
 {
+    outFile.setVersion(fileHeader.getVersion());
     RFileIO::writeBinary(outFile,fileHeader.version);
     RFileIO::writeBinary(outFile,fileHeader.type);
     RFileIO::writeBinary(outFile,fileHeader.information);
@@ -5053,6 +5064,28 @@ void RFileIO::readAscii(RFile &inFile, RStructuralPiezoSetup &setup)
         port.permittivity = readFiniteDouble("permittivity");
         port.voltage = readFiniteDouble("voltage");
     }
+    if (inFile.getVersion() > RVersion(1,3,14))
+    {
+        int mode = 0;
+        RFileIO::readAscii(inFile,mode);
+        result.electricalMode = static_cast<RStructuralPiezoElectricalMode>(mode);
+        uint boundaryCount = 0;
+        RFileIO::readAscii(inFile,boundaryCount);
+        if (boundaryCount > 1000000u)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Excessive structural piezo nodal boundary count (%u).",boundaryCount);
+        }
+        result.nodalBoundaryConditions.resize(boundaryCount);
+        for (RStructuralPiezoNodeBoundary &boundary : result.nodalBoundaryConditions)
+        {
+            int type = 0;
+            RFileIO::readAscii(inFile,boundary.nodeId);
+            RFileIO::readAscii(inFile,type);
+            boundary.type = static_cast<RStructuralPiezoBoundaryType>(type);
+            boundary.value = readFiniteDouble("nodal boundary value");
+        }
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -5119,6 +5152,28 @@ void RFileIO::readBinary(RFile &inFile, RStructuralPiezoSetup &setup)
         readExact(&port.permittivity,qint64(sizeof(port.permittivity)),"piezo permittivity");
         readExact(&port.voltage,qint64(sizeof(port.voltage)),"port voltage");
     }
+    if (inFile.getVersion() > RVersion(1,3,14))
+    {
+        int mode = 0;
+        readExact(&mode,qint64(sizeof(mode)),"electrical mode");
+        result.electricalMode = static_cast<RStructuralPiezoElectricalMode>(mode);
+        uint boundaryCount = 0;
+        readExact(&boundaryCount,qint64(sizeof(boundaryCount)),"nodal boundary count");
+        if (boundaryCount > 1000000u)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Excessive structural piezo nodal boundary count (%u).",boundaryCount);
+        }
+        result.nodalBoundaryConditions.resize(boundaryCount);
+        for (RStructuralPiezoNodeBoundary &boundary : result.nodalBoundaryConditions)
+        {
+            int type = 0;
+            readExact(&boundary.nodeId,qint64(sizeof(boundary.nodeId)),"nodal boundary node ID");
+            readExact(&type,qint64(sizeof(type)),"nodal boundary type");
+            boundary.type = static_cast<RStructuralPiezoBoundaryType>(type);
+            readExact(&boundary.value,qint64(sizeof(boundary.value)),"nodal boundary value");
+        }
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -5126,6 +5181,14 @@ void RFileIO::readBinary(RFile &inFile, RStructuralPiezoSetup &setup)
 void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup, bool addNewLine)
 {
     setup.validate();
+    const bool writeNodalTail = outFile.getVersion() > RVersion(1,3,14);
+    if (!writeNodalTail &&
+        (setup.electricalMode != RStructuralPiezoElectricalMode::LegacyTerminalVoltage ||
+         !setup.nodalBoundaryConditions.empty()))
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Nodal-potential piezo data cannot be written to a pre-1.3.15 model file.");
+    }
     struct PrecisionGuard
     {
         QTextStream &stream;
@@ -5152,11 +5215,30 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup,
         write(port.permittivity);
         write(port.voltage);
     }
+    if (writeNodalTail)
+    {
+        write(int(setup.electricalMode));
+        write(uint(setup.nodalBoundaryConditions.size()));
+        for (const RStructuralPiezoNodeBoundary &boundary : setup.nodalBoundaryConditions)
+        {
+            write(boundary.nodeId);
+            write(int(boundary.type));
+            write(boundary.value);
+        }
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup)
 {
     setup.validate();
+    const bool writeNodalTail = outFile.getVersion() > RVersion(1,3,14);
+    if (!writeNodalTail &&
+        (setup.electricalMode != RStructuralPiezoElectricalMode::LegacyTerminalVoltage ||
+         !setup.nodalBoundaryConditions.empty()))
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Nodal-potential piezo data cannot be written to a pre-1.3.15 model file.");
+    }
     RFileIO::writeBinary(outFile,setup.enabled);
     RFileIO::writeBinary(outFile,setup.meshFingerprint);
     RFileIO::writeBinary(outFile,uint(setup.ports.size()));
@@ -5167,6 +5249,17 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup
         RFileIO::writeBinary(outFile,port.coupling);
         RFileIO::writeBinary(outFile,port.permittivity);
         RFileIO::writeBinary(outFile,port.voltage);
+    }
+    if (writeNodalTail)
+    {
+        RFileIO::writeBinary(outFile,int(setup.electricalMode));
+        RFileIO::writeBinary(outFile,uint(setup.nodalBoundaryConditions.size()));
+        for (const RStructuralPiezoNodeBoundary &boundary : setup.nodalBoundaryConditions)
+        {
+            RFileIO::writeBinary(outFile,boundary.nodeId);
+            RFileIO::writeBinary(outFile,int(boundary.type));
+            RFileIO::writeBinary(outFile,boundary.value);
+        }
     }
 }
 
