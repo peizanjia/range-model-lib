@@ -7,6 +7,7 @@
 #include "rml_environment_condition.h"
 #include "rml_initial_condition.h"
 #include "rml_material_property.h"
+#include "rml_mesh_generator.h"
 #include "rml_problem.h"
 
 namespace
@@ -95,6 +96,23 @@ bool testedElement(RElementType type)
            type == R_ELEMENT_HEXA1;
 }
 
+bool validatedElement(RElementType type)
+{
+    // Keep independent from testedElement: validation requires a separate
+    // analytical, patch, or convergence reference, not only automated coverage.
+    return type == R_ELEMENT_TRUSS1 ||
+           type == R_ELEMENT_TRUSS2 ||
+           type == R_ELEMENT_BEAM1 ||
+           type == R_ELEMENT_BEAM2 ||
+           type == R_ELEMENT_TRI1 ||
+           type == R_ELEMENT_TRI2 ||
+           type == R_ELEMENT_QUAD1 ||
+           type == R_ELEMENT_QUAD2 ||
+           type == R_ELEMENT_TETRA1 ||
+           type == R_ELEMENT_WEDGE1 ||
+           type == R_ELEMENT_HEXA1;
+}
+
 RCapabilityRegistry buildRegistry()
 {
     RCapabilityRegistry registry;
@@ -131,6 +149,7 @@ RCapabilityRegistry buildRegistry()
         const RElementType type = RElementType(value);
         const bool implemented = structuralElement(type);
         const bool tested = testedElement(type);
+        const bool validated = validatedElement(type);
         QJsonObject metadata;
         metadata.insert(QStringLiteral("auxiliary"),type == R_ELEMENT_POINT);
         metadata.insert(QStringLiteral("descriptor"),RElementDescriptor::get(type).toJson());
@@ -140,7 +159,7 @@ RCapabilityRegistry buildRegistry()
                                  true,
                                  implemented,
                                  tested,
-                                 tested,
+                                 validated,
                                  profiles(implemented),
                                  implemented ? QString() : QStringLiteral("Registered for file compatibility; structural formulation is not implemented."),
                                  metadata));
@@ -191,8 +210,20 @@ RCapabilityRegistry buildRegistry()
     registry.add(RCapability(RCapabilityDomain::Mesher,
                              QStringLiteral("tetgen.volume"),
                              QStringLiteral("TetGen volume mesher"),
-                             true,true,false,false,profiles(true),
-                             QStringLiteral("Mature tetrahedral backend; automated quality and mapping validation is pending.")));
+                             true,true,true,false,profiles(true),
+                             QStringLiteral("Automated closed-surface smoke coverage exists; independent mesh-quality and assignment-mapping validation is pending.")));
+
+#ifdef RANGE_HAVE_GMSH
+    const QStringList availableBackends = RMeshGenerator::getAvailableBackends();
+    if (availableBackends.contains(QStringLiteral("gmsh-4")))
+    {
+        registry.add(RCapability(RCapabilityDomain::Mesher,
+                                 QStringLiteral("gmsh-4"),
+                                 QStringLiteral("Gmsh 4 mesher"),
+                                 true,true,true,false,profiles(true),
+                                 QStringLiteral("Automated 1D/2D/3D backend, quality, and named-set tests exist; independent mesh-reference or convergence validation is pending.")));
+    }
+#endif
 
     return registry;
 }

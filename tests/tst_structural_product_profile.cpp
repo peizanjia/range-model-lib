@@ -5,6 +5,7 @@
 #include "rml_boundary_condition.h"
 #include "rml_environment_condition.h"
 #include "rml_model.h"
+#include "rml_mesh_generator.h"
 #include "rml_problem.h"
 #include "rml_structural_product_profile.h"
 
@@ -248,15 +249,40 @@ void TestStructuralProductProfile::registryCoversProductDomains()
 void TestStructuralProductProfile::registryRoundTripsJson()
 {
     const RCapabilityRegistry &source = RCapabilityRegistry::getBuiltIn();
+    const QStringList availableBackends = RMeshGenerator::getAvailableBackends();
+    QVERIFY(availableBackends.contains(QStringLiteral("tetgen")));
+
     RCapabilityRegistry restored;
     QString error;
     QVERIFY2(RCapabilityRegistry::fromJson(source.toJson(),restored,&error),qPrintable(error));
     QCOMPARE(restored.getAll().size(),source.getAll().size());
 
+    // The serialized capability list must describe exactly the mesh backends
+    // compiled into the same model library.
+    const QList<RCapability> mesherCapabilities = restored.list(RCapabilityDomain::Mesher);
+    QCOMPARE(mesherCapabilities.size(),availableBackends.size());
+    for (const QString &backend : availableBackends)
+    {
+        const QString capabilityId = backend == QStringLiteral("tetgen")
+            ? QStringLiteral("tetgen.volume")
+            : backend;
+        const RCapability *capability = restored.find(RCapabilityDomain::Mesher,capabilityId);
+        QVERIFY2(capability,qPrintable(QStringLiteral("Missing capability for backend '%1'.").arg(backend)));
+        QVERIFY(capability->isRegistered());
+        QVERIFY(capability->isImplemented());
+        QVERIFY(capability->isTested());
+        QVERIFY(!capability->isValidated());
+        QVERIFY(capability->isExposed(QStringLiteral("full")));
+        QVERIFY(capability->isExposed(RStructuralProductProfile::getId()));
+        QVERIFY(!capability->getDiagnostic().isEmpty());
+    }
+
     const RCapability *tetgen = restored.find(RCapabilityDomain::Mesher,"tetgen.volume");
     QVERIFY(tetgen);
     QCOMPARE(tetgen->getName(),QString("TetGen volume mesher"));
     QVERIFY(tetgen->isImplemented());
+    QVERIFY(tetgen->isTested());
+    QVERIFY(!tetgen->isValidated());
     QVERIFY(tetgen->isExposed(RStructuralProductProfile::getId()));
 }
 
