@@ -629,7 +629,7 @@ void TestStructuralPiezoSetup::electricChargeVariableContract()
 {
     QCOMPARE(RVariable::getId(R_VARIABLE_ELECTRIC_CHARGE),QStringLiteral("var-electric_charge"));
     QCOMPARE(RVariable::getTypeFromId(QStringLiteral("var-electric_charge")),R_VARIABLE_ELECTRIC_CHARGE);
-    QCOMPARE(RVariable::getName(R_VARIABLE_ELECTRIC_CHARGE),QStringLiteral("Right electrode charge"));
+    QCOMPARE(RVariable::getName(R_VARIABLE_ELECTRIC_CHARGE),QStringLiteral("Electric conductor charge"));
     QCOMPARE(RVariable::getUnits(R_VARIABLE_ELECTRIC_CHARGE),QStringLiteral("C"));
     QCOMPARE(RVariable::getDataType(R_VARIABLE_ELECTRIC_CHARGE),R_VARIABLE_DATA_DOUBLE);
     QCOMPARE(RVariable::getInitValue(R_VARIABLE_ELECTRIC_CHARGE),0.0);
