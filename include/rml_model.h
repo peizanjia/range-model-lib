@@ -59,6 +59,9 @@ class RModel : public RProblem, public RResults
         //! Validate that all nodes and elements have unique, nonzero physical identifiers.
         void validatePhysicalIds() const;
 
+        //! Read into this instance. Public read() stages into a temporary first.
+        void readInPlace(const QString &fileName);
+
         //! Add element to element group.
         void addElementToGroup(uint elementID,
                                  uint groupID = 0);
@@ -132,7 +135,7 @@ class RModel : public RProblem, public RResults
         //! Update model data.
         void update(const RModel &rModel);
 
-        //! Read mesh from the file.
+        //! Read mesh from the file and replace this model only after successful parsing and validation.
         void read(const QString &fileName);
 
         //! Write mesh to the file.

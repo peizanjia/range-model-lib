@@ -467,6 +467,14 @@ void RModel::update(const RModel &rModel)
 
 void RModel::read(const QString &fileName)
 {
+    RModel loadedModel;
+    loadedModel.readInPlace(fileName);
+    *this = loadedModel;
+} /* RModel::read */
+
+
+void RModel::readInPlace(const QString &fileName)
+{
     if (fileName.isEmpty())
     {
         throw RError(RError::Type::InvalidFileName,R_ERROR_REF,"No file name was provided.");
@@ -524,7 +532,7 @@ void RModel::read(const QString &fileName)
             RLogger::unindent();
         }
     }
-} /* RModel::read */
+} /* RModel::readInPlace */
 
 
 QString RModel::write(const QString &fileName, bool writeLinkFile) const
@@ -1094,10 +1102,25 @@ uint RModel::getNNodes() const
 void RModel::setNNodes (uint nnodes)
 {
     const uint previousCount = uint(this->nodes.size());
-    this->nodes.resize(nnodes);
-    for (uint i=previousCount;i<nnodes;i++)
+    const uint64_t additionalCount = nnodes > previousCount ? uint64_t(nnodes - previousCount) : 0;
+    if (additionalCount > 0)
     {
-        this->nodes[i].physicalId = this->allocateNodePhysicalId();
+        const uint64_t nextId = this->nextNodePhysicalId;
+        const uint64_t nextIdAfterResize = nextId + additionalCount;
+        if (nextId == RConstants::eod || nextIdAfterResize > RConstants::eod)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical node identifiers are available for the requested resize.");
+        }
+    }
+    this->nodes.resize(nnodes);
+    if (additionalCount > 0)
+    {
+        const uint64_t firstId = this->nextNodePhysicalId;
+        for (uint i=previousCount;i<nnodes;i++)
+        {
+            this->nodes[i].physicalId = uint(firstId + uint64_t(i - previousCount));
+        }
+        this->nextNodePhysicalId = uint(firstId + additionalCount);
     }
     this->RResults::setNNodes (nnodes);
 } /* RModel::setNNodes */
@@ -1665,10 +1688,25 @@ uint RModel::getNElements(REntityGroupType elementGroupType) const
 void RModel::setNElements (uint nelements)
 {
     const uint previousCount = uint(this->elements.size());
-    this->elements.resize(nelements);
-    for (uint i=previousCount;i<nelements;i++)
+    const uint64_t additionalCount = nelements > previousCount ? uint64_t(nelements - previousCount) : 0;
+    if (additionalCount > 0)
     {
-        this->elements[i].physicalId = this->allocateElementPhysicalId();
+        const uint64_t nextId = this->nextElementPhysicalId;
+        const uint64_t nextIdAfterResize = nextId + additionalCount;
+        if (nextId == RConstants::eod || nextIdAfterResize > RConstants::eod)
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element identifiers are available for the requested resize.");
+        }
+    }
+    this->elements.resize(nelements);
+    if (additionalCount > 0)
+    {
+        const uint64_t firstId = this->nextElementPhysicalId;
+        for (uint i=previousCount;i<nelements;i++)
+        {
+            this->elements[i].physicalId = uint(firstId + uint64_t(i - previousCount));
+        }
+        this->nextElementPhysicalId = uint(firstId + additionalCount);
     }
     this->RResults::setNElements(nelements);
 
