@@ -3136,6 +3136,11 @@ void RFileIO::readAscii(RFile &inFile, RElementGroup &elementGroup)
     {
         RFileIO::readAscii(inFile,elementGroup.elementIDs[i]);
     }
+    // The serialized condition counts describe the complete group state.
+    // Clear constructor defaults and prior contents before applying that snapshot.
+    elementGroup.bConditions.clear();
+    elementGroup.eConditions.clear();
+    elementGroup.iConditions.clear();
     unsigned int nBConditions = 0;
     RFileIO::readAscii(inFile,nBConditions);
     RBoundaryCondition bCondition;
@@ -3174,6 +3179,11 @@ void RFileIO::readBinary(RFile &inFile, RElementGroup &elementGroup)
     {
         RFileIO::readBinary(inFile,elementGroup.elementIDs[i]);
     }
+    // The serialized condition counts describe the complete group state.
+    // Clear constructor defaults and prior contents before applying that snapshot.
+    elementGroup.bConditions.clear();
+    elementGroup.eConditions.clear();
+    elementGroup.iConditions.clear();
     unsigned int nBConditions = 0;
     RFileIO::readBinary(inFile,nBConditions);
     RBoundaryCondition bCondition;
