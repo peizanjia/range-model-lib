@@ -2,6 +2,7 @@
 #define RML_MODEL_H
 
 #include <vector>
+#include <QStringList>
 
 #include <rbl_bvector.h>
 #include <rbl_distance_vector.h>
@@ -141,6 +142,11 @@ class RModel : public RProblem, public RResults
         //! Write mesh to the file.
         //! Return actual filename to which the model was saved.
         QString write(const QString &fileName, bool writeLinkFile = true) const;
+
+        //! Exact files native write will publish, in publication order: model
+        //! record first, followed by the logical LINK when it is distinct.
+        //! Call on a detached model to reserve outputs before background IO.
+        QStringList nativeWritePaths(const QString &fileName, bool writeLinkFile = true) const;
 
         //! Export model to MSH (old range) model.
         void exportTo(RModelMsh &modelMsh) const;

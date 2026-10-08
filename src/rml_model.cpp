@@ -535,7 +535,7 @@ void RModel::readInPlace(const QString &fileName)
 } /* RModel::readInPlace */
 
 
-QString RModel::write(const QString &fileName, bool writeLinkFile) const
+QStringList RModel::nativeWritePaths(const QString &fileName, bool writeLinkFile) const
 {
     if (fileName.isEmpty())
     {
@@ -543,7 +543,8 @@ QString RModel::write(const QString &fileName, bool writeLinkFile) const
     }
 
     QString ext = RFileUtils::getExtension(fileName);
-    QString targetFileName(fileName);
+    if (ext != RModel::getDefaultFileExtension(false) && ext != RModel::getDefaultFileExtension(true))
+        throw RError(RError::Type::InvalidFileName,R_ERROR_REF, "Unknown extension \"" + ext + "\".");
     QString linkFileName = RFileUtils::getFileNameWithOutTimeStep(fileName);
 
     uint recordNumber = 0;
@@ -567,17 +568,28 @@ QString RModel::write(const QString &fileName, bool writeLinkFile) const
         }
     }
 
-    targetFileName = RFileUtils::getFileNameWithTimeStep(linkFileName,recordNumber);
+    const QString targetFileName = RFileUtils::getFileNameWithTimeStep(linkFileName,recordNumber);
+    QStringList paths{writeLinkFile ? targetFileName : linkFileName};
+    if (writeLinkFile && linkFileName != targetFileName) paths.append(linkFileName);
+    return paths;
+}
+
+QString RModel::write(const QString &fileName, bool writeLinkFile) const
+{
+    const QStringList paths = this->nativeWritePaths(fileName, writeLinkFile);
+    const QString ext = RFileUtils::getExtension(fileName);
+    const QString targetFileName = paths.first();
+    const QString linkFileName = RFileUtils::getFileNameWithOutTimeStep(fileName);
 
     try
     {
         if (ext == RModel::getDefaultFileExtension(false))
         {
-            this->writeAscii(writeLinkFile?targetFileName:linkFileName);
+            this->writeAscii(targetFileName);
         }
         else if (ext == RModel::getDefaultFileExtension(true))
         {
-            this->writeBinary(writeLinkFile?targetFileName:linkFileName);
+            this->writeBinary(targetFileName);
         }
         else
         {
