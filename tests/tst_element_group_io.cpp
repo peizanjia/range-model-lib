@@ -3,6 +3,7 @@
 
 #include "rml_file_io.h"
 #include "rml_line.h"
+#include "rml_model.h"
 
 class TestElementGroupIO : public QObject
 {
@@ -85,6 +86,37 @@ void TestElementGroupIO::groupReadReplacesConditionSnapshot()
     QVERIFY(target.hasInitialCondition(R_INITIAL_CONDITION_DISPLACEMENT));
     QVERIFY(!target.hasInitialCondition(R_INITIAL_CONDITION_TEMPERATURE));
     QCOMPARE(target.getNInitialConditions(),uint(1));
+
+    RModel model;
+    model.addLine(source);
+    const RLine identifiedSource(model.getLine(0));
+    const QString currentPath = directory.filePath(binary ? "group-v18.bin" : "group-v18.txt");
+    {
+        RSaveFile out(currentPath,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        out.setVersion(RVersion(1,3,18));
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        if (binary) RFileIO::writeBinary(out,identifiedSource);
+        else RFileIO::writeAscii(out,identifiedSource);
+        QVERIFY(out.commit());
+    }
+    RLine currentTarget;
+    {
+        RFile in(currentPath,binary ? RFile::BINARY : RFile::ASCII);
+        in.setVersion(RVersion(1,3,18));
+        QVERIFY(in.open(QIODevice::ReadOnly));
+        if (binary) RFileIO::readBinary(in,currentTarget);
+        else RFileIO::readAscii(in,currentTarget);
+    }
+    QCOMPARE(currentTarget.getPhysicalId(),identifiedSource.getPhysicalId());
+
+    {
+        RFile in(path,binary ? RFile::BINARY : RFile::ASCII);
+        in.setVersion(RVersion(1,3,13));
+        QVERIFY(in.open(QIODevice::ReadOnly));
+        if (binary) RFileIO::readBinary(in,currentTarget);
+        else RFileIO::readAscii(in,currentTarget);
+    }
+    QCOMPARE(currentTarget.getPhysicalId(),0u);
 }
 
 QTEST_APPLESS_MAIN(TestElementGroupIO)

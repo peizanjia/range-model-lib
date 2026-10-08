@@ -23,6 +23,8 @@ class RElementGroup : public REntityGroup
 
     protected:
 
+        //! Stable model-local physical identifier shared by all element group types.
+        uint physicalId;
         //! List of element IDs.
         std::vector <unsigned int> elementIDs;
         //! List of boundary conditions.
@@ -47,6 +49,9 @@ class RElementGroup : public REntityGroup
 
         //! Assignment operator.
         RElementGroup & operator = ( const RElementGroup &elementGroup );
+
+        //! Return stable model-local physical identifier.
+        uint getPhysicalId() const;
 
         //! Add element to the group.
         void add ( unsigned int elementID );
@@ -224,6 +229,8 @@ class RElementGroup : public REntityGroup
 
         //! Allow RFileIO to access private members.
         friend class RFileIO;
+        //! Allow RModel to assign identifiers while preserving group identity rules.
+        friend class RModel;
 
     protected:
 

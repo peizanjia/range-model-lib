@@ -57,7 +57,16 @@ class RModel : public RProblem, public RResults
         //! Allocate a model-local physical identifier for a newly created element.
         uint allocateElementPhysicalId();
 
-        //! Validate that all nodes and elements have unique, nonzero physical identifiers.
+        //! Allocate a model-local physical identifier for a newly created element group.
+        uint allocateElementGroupPhysicalId();
+
+        //! Validate all element group identifiers and the next unused identifier.
+        void validateElementGroupPhysicalIds() const;
+
+        //! Assign deterministic identifiers to element groups from a legacy model file.
+        void migrateLegacyElementGroupPhysicalIds();
+
+        //! Validate all stable physical identifiers and their allocators.
         void validatePhysicalIds() const;
 
         //! Read into this instance. Public read() stages into a temporary first.
@@ -105,6 +114,8 @@ class RModel : public RProblem, public RResults
         uint nextNodePhysicalId;
         //! Next unused physical element identifier; RConstants::eod means the range is exhausted.
         uint nextElementPhysicalId;
+        //! Next unused physical element group identifier, shared by Point/Line/Surface/Volume.
+        uint nextElementGroupPhysicalId;
 
     public:
 
@@ -376,6 +387,13 @@ class RModel : public RProblem, public RResults
 
         //! Return pointer to element group.
         RElementGroup * getElementGroupPtr(uint groupID);
+
+        //! Find an element group by stable physical identifier. On success, writes
+        //! its type and index within that type's list to the required output pointers.
+        //! Throws if the model contains invalid or duplicate element group identifiers.
+        bool findElementGroupByPhysicalId(uint physicalId,
+                                          REntityGroupType *groupType,
+                                          uint *localIndex) const;
 
         //! Return const pointer to entity group.
         const REntityGroup * getEntityGroupPtr(uint groupID, bool onlyElements = false) const;

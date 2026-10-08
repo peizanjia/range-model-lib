@@ -45,11 +45,13 @@ void RModel::_init (const RModel *pModel)
         this->modelData = pModel->modelData;
         this->nextNodePhysicalId = pModel->nextNodePhysicalId;
         this->nextElementPhysicalId = pModel->nextElementPhysicalId;
+        this->nextElementGroupPhysicalId = pModel->nextElementGroupPhysicalId;
     }
     else
     {
         this->nextNodePhysicalId = 1;
         this->nextElementPhysicalId = 1;
+        this->nextElementGroupPhysicalId = 1;
     }
 } /* RModel::_init */
 
@@ -78,6 +80,81 @@ uint RModel::allocateElementPhysicalId()
     this->nextElementPhysicalId = physicalId + 1;
     return physicalId;
 } /* RModel::allocateElementPhysicalId */
+
+
+uint RModel::allocateElementGroupPhysicalId()
+{
+    if (this->nextElementGroupPhysicalId == RConstants::eod)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element group identifier is available.");
+    }
+
+    const uint physicalId = this->nextElementGroupPhysicalId;
+    this->nextElementGroupPhysicalId = physicalId + 1;
+    return physicalId;
+} /* RModel::allocateElementGroupPhysicalId */
+
+
+void RModel::validateElementGroupPhysicalIds() const
+{
+    std::set<uint> groupIds;
+    uint maxGroupId = 0;
+
+    const auto validateGroups = [&groupIds,&maxGroupId](const auto &groups)
+    {
+        for (const RElementGroup &group : groups)
+        {
+            const uint physicalId = group.getPhysicalId();
+            if (physicalId == 0 || physicalId == RConstants::eod || !groupIds.insert(physicalId).second)
+            {
+                throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                             "Model element group physical identifiers must be nonzero and unique.");
+            }
+            maxGroupId = std::max(maxGroupId,physicalId);
+        }
+    };
+
+    validateGroups(this->points);
+    validateGroups(this->lines);
+    validateGroups(this->surfaces);
+    validateGroups(this->volumes);
+
+    if (this->nextElementGroupPhysicalId != RConstants::eod &&
+        this->nextElementGroupPhysicalId <= maxGroupId)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Next physical element group identifier must be greater than all assigned identifiers.");
+    }
+} /* RModel::validateElementGroupPhysicalIds */
+
+
+void RModel::migrateLegacyElementGroupPhysicalIds()
+{
+    const uint64_t groupCount = uint64_t(this->points.size())
+                              + uint64_t(this->lines.size())
+                              + uint64_t(this->surfaces.size())
+                              + uint64_t(this->volumes.size());
+    if (groupCount > uint64_t(RConstants::eod) - 1)
+    {
+        throw RError(RError::Type::InvalidFileFormat,R_ERROR_REF,
+                     "Legacy model contains too many element groups for physical identifiers.");
+    }
+
+    this->nextElementGroupPhysicalId = 1;
+    const auto assignGroups = [this](auto &groups)
+    {
+        for (RElementGroup &group : groups)
+        {
+            group.physicalId = this->allocateElementGroupPhysicalId();
+        }
+    };
+
+    // Preserve the fixed legacy migration order, independent of labels or later edits.
+    assignGroups(this->points);
+    assignGroups(this->lines);
+    assignGroups(this->surfaces);
+    assignGroups(this->volumes);
+} /* RModel::migrateLegacyElementGroupPhysicalIds */
 
 
 void RModel::validatePhysicalIds() const
@@ -111,6 +188,8 @@ void RModel::validatePhysicalIds() const
     {
         throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Next physical element identifier must be greater than all assigned identifiers.");
     }
+
+    this->validateElementGroupPhysicalIds();
 } /* RModel::validatePhysicalIds */
 
 
@@ -2517,6 +2596,47 @@ RElementGroup *RModel::getElementGroupPtr(uint groupID)
 } /* RModel::getElementGroupPtr */
 
 
+bool RModel::findElementGroupByPhysicalId(uint physicalId,
+                                          REntityGroupType *groupType,
+                                          uint *localIndex) const
+{
+    if (!groupType || !localIndex)
+    {
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                     "Element group physical identifier lookup requires type and local-index outputs.");
+    }
+
+    *groupType = R_ENTITY_GROUP_NONE;
+    *localIndex = RConstants::eod;
+    this->validateElementGroupPhysicalIds();
+
+    if (physicalId == 0 || physicalId == RConstants::eod)
+    {
+        return false;
+    }
+
+    const auto findInGroups = [physicalId,groupType,localIndex](REntityGroupType type,
+                                                               const auto &groups)
+    {
+        for (uint i=0;i<uint(groups.size());i++)
+        {
+            if (groups[i].getPhysicalId() == physicalId)
+            {
+                *groupType = type;
+                *localIndex = i;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    return findInGroups(R_ENTITY_GROUP_POINT,this->points)
+        || findInGroups(R_ENTITY_GROUP_LINE,this->lines)
+        || findInGroups(R_ENTITY_GROUP_SURFACE,this->surfaces)
+        || findInGroups(R_ENTITY_GROUP_VOLUME,this->volumes);
+} /* RModel::findElementGroupByPhysicalId */
+
+
 const REntityGroup *RModel::getEntityGroupPtr(uint groupID, bool onlyElements) const
 {
     R_ERROR_ASSERT(groupID < this->getNEntityGroups());
@@ -3387,9 +3507,19 @@ uint RModel::getNPoints() const
 void RModel::setNPoints (uint npoints)
 {
     uint oldSize=uint(this->points.size());
+    const uint64_t additionalCount = npoints > oldSize ? uint64_t(npoints - oldSize) : 0;
+    if (additionalCount > 0)
+    {
+        this->validateElementGroupPhysicalIds();
+        if (uint64_t(this->nextElementGroupPhysicalId) + additionalCount > uint64_t(RConstants::eod))
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element group identifiers are available.");
+        }
+    }
     this->points.resize(npoints);
     for (uint i=oldSize;i<npoints;i++)
     {
+        this->points[i].physicalId = this->allocateElementGroupPhysicalId();
         this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_POINT,oldSize));
     }
     for (uint i=npoints;i<oldSize;i++)
@@ -3429,7 +3559,10 @@ RPoint &RModel::getPoint (uint position)
 
 void RModel::addPoint (const RPoint &point)
 {
-    this->points.push_back (point);
+    this->validateElementGroupPhysicalIds();
+    RPoint addedPoint(point);
+    addedPoint.physicalId = this->allocateElementGroupPhysicalId();
+    this->points.push_back(addedPoint);
     this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_POINT,uint(this->points.size()-1)));
 } /* RModel::addPoint */
 
@@ -3438,7 +3571,9 @@ void RModel::setPoint (uint  position,
                         const RPoint &point)
 {
     R_ERROR_ASSERT (position < this->points.size());
+    const uint physicalId = this->points[position].physicalId;
     this->points[position] = point;
+    this->points[position].physicalId = physicalId;
 } /* RModel::setPoint */
 
 
@@ -3471,9 +3606,19 @@ uint RModel::getNLines() const
 void RModel::setNLines (uint nlines)
 {
     uint oldSize=uint(this->lines.size());
+    const uint64_t additionalCount = nlines > oldSize ? uint64_t(nlines - oldSize) : 0;
+    if (additionalCount > 0)
+    {
+        this->validateElementGroupPhysicalIds();
+        if (uint64_t(this->nextElementGroupPhysicalId) + additionalCount > uint64_t(RConstants::eod))
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element group identifiers are available.");
+        }
+    }
     this->lines.resize(nlines);
     for (uint i=oldSize;i<nlines;i++)
     {
+        this->lines[i].physicalId = this->allocateElementGroupPhysicalId();
         this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_LINE,oldSize));
     }
     for (uint i=nlines;i<oldSize;i++)
@@ -3513,7 +3658,10 @@ RLine &RModel::getLine (uint position)
 
 void RModel::addLine (const RLine &line)
 {
-    this->lines.push_back (line);
+    this->validateElementGroupPhysicalIds();
+    RLine addedLine(line);
+    addedLine.physicalId = this->allocateElementGroupPhysicalId();
+    this->lines.push_back(addedLine);
     this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_LINE,uint(this->lines.size()-1)));
 } /* RModel::addLine */
 
@@ -3522,7 +3670,9 @@ void RModel::setLine (uint  position,
                        const RLine  &line)
 {
     R_ERROR_ASSERT (position < this->lines.size());
+    const uint physicalId = this->lines[position].physicalId;
     this->lines[position] = line;
+    this->lines[position].physicalId = physicalId;
 } /* RModel::setLine */
 
 
@@ -3555,9 +3705,19 @@ uint RModel::getNSurfaces() const
 void RModel::setNSurfaces (uint nsurfaces)
 {
     uint oldSize=uint(this->surfaces.size());
+    const uint64_t additionalCount = nsurfaces > oldSize ? uint64_t(nsurfaces - oldSize) : 0;
+    if (additionalCount > 0)
+    {
+        this->validateElementGroupPhysicalIds();
+        if (uint64_t(this->nextElementGroupPhysicalId) + additionalCount > uint64_t(RConstants::eod))
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element group identifiers are available.");
+        }
+    }
     this->surfaces.resize(nsurfaces);
     for (uint i=oldSize;i<nsurfaces;i++)
     {
+        this->surfaces[i].physicalId = this->allocateElementGroupPhysicalId();
         this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_SURFACE,oldSize));
     }
     for (uint i=nsurfaces;i<oldSize;i++)
@@ -3597,7 +3757,10 @@ RSurface &RModel::getSurface (uint position)
 
 void RModel::addSurface (const RSurface &surface)
 {
-    this->surfaces.push_back (surface);
+    this->validateElementGroupPhysicalIds();
+    RSurface addedSurface(surface);
+    addedSurface.physicalId = this->allocateElementGroupPhysicalId();
+    this->surfaces.push_back(addedSurface);
     this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_SURFACE,uint(this->surfaces.size()-1)));
 } /* RModel::add_surface */
 
@@ -3606,7 +3769,9 @@ void RModel::setSurface (uint    position,
                           const RSurface &surface)
 {
     R_ERROR_ASSERT (position < this->surfaces.size());
+    const uint physicalId = this->surfaces[position].physicalId;
     this->surfaces[position] = surface;
+    this->surfaces[position].physicalId = physicalId;
 } /* RModel::addSurface */
 
 
@@ -3751,9 +3916,19 @@ uint RModel::getNVolumes() const
 void RModel::setNVolumes (uint nvolumes)
 {
     uint oldSize=uint(this->volumes.size());
+    const uint64_t additionalCount = nvolumes > oldSize ? uint64_t(nvolumes - oldSize) : 0;
+    if (additionalCount > 0)
+    {
+        this->validateElementGroupPhysicalIds();
+        if (uint64_t(this->nextElementGroupPhysicalId) + additionalCount > uint64_t(RConstants::eod))
+        {
+            throw RError(RError::Type::InvalidInput,R_ERROR_REF,"No unused physical element group identifiers are available.");
+        }
+    }
     this->volumes.resize(nvolumes);
     for (uint i=oldSize;i<nvolumes;i++)
     {
+        this->volumes[i].physicalId = this->allocateElementGroupPhysicalId();
         this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_VOLUME,oldSize));
     }
     for (uint i=nvolumes;i<oldSize;i++)
@@ -3793,7 +3968,10 @@ RVolume &RModel::getVolume (uint position)
 
 void RModel::addVolume (const RVolume &volume)
 {
-    this->volumes.push_back (volume);
+    this->validateElementGroupPhysicalIds();
+    RVolume addedVolume(volume);
+    addedVolume.physicalId = this->allocateElementGroupPhysicalId();
+    this->volumes.push_back(addedVolume);
     this->addEntityGroupIdReference(this->getEntityGroupID(R_ENTITY_GROUP_VOLUME,uint(this->volumes.size()-1)));
 } /* RModel::addVolume */
 
@@ -3802,7 +3980,9 @@ void RModel::setVolume (uint   position,
                          const RVolume &volume)
 {
     R_ERROR_ASSERT (position < this->volumes.size());
+    const uint physicalId = this->volumes[position].physicalId;
     this->volumes[position] = volume;
+    this->volumes[position].physicalId = physicalId;
 } /* RModel::setVolume */
 
 
@@ -7535,6 +7715,11 @@ QString RModel::readAscii(const QString &fileName)
     {
         throw RError(RError::Type::InvalidFileFormat,R_ERROR_REF,"File type of the file \'" + fileName + "\' is not MODEL.");
     }
+    if (fileHeader.getVersion() > RModel::version)
+    {
+        throw RError(RError::Type::InvalidFileFormat,R_ERROR_REF,
+                     "MODEL file version " + fileHeader.getVersion().toString() + " is newer than supported version " + RModel::version.toString() + ".");
+    }
 
     RLogger::debug("File version: %s (target: %s)\n",
                    fileHeader.getVersion().toString().toUtf8().constData(),
@@ -7585,7 +7770,6 @@ QString RModel::readAscii(const QString &fileName)
         }
         RFileIO::readAscii(modelFile,this->nextNodePhysicalId);
         RFileIO::readAscii(modelFile,this->nextElementPhysicalId);
-        this->validatePhysicalIds();
     }
     else
     {
@@ -7632,6 +7816,15 @@ QString RModel::readAscii(const QString &fileName)
     {
         RFileIO::readAscii(modelFile,this->volumes[i]);
     }
+    if (modelFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::readAscii(modelFile,this->nextElementGroupPhysicalId);
+    }
+    else
+    {
+        this->migrateLegacyElementGroupPhysicalIds();
+    }
+    this->validatePhysicalIds();
     uint nVectorFields = 0;
     RFileIO::readAscii(modelFile,nVectorFields);
     RLogger::debug("Vector fields: %u\n",nVectorFields);
@@ -7762,6 +7955,11 @@ QString RModel::readBinary(const QString &fileName)
     {
         throw RError(RError::Type::InvalidFileFormat,R_ERROR_REF,"File type of the file \'" + fileName + "\' is not MODEL.");
     }
+    if (fileHeader.getVersion() > RModel::version)
+    {
+        throw RError(RError::Type::InvalidFileFormat,R_ERROR_REF,
+                     "MODEL file version " + fileHeader.getVersion().toString() + " is newer than supported version " + RModel::version.toString() + ".");
+    }
 
     RLogger::debug("File version: %s (target: %s)\n",
                    fileHeader.getVersion().toString().toUtf8().constData(),
@@ -7812,7 +8010,6 @@ QString RModel::readBinary(const QString &fileName)
         }
         RFileIO::readBinary(modelFile,this->nextNodePhysicalId);
         RFileIO::readBinary(modelFile,this->nextElementPhysicalId);
-        this->validatePhysicalIds();
     }
     else
     {
@@ -7859,6 +8056,15 @@ QString RModel::readBinary(const QString &fileName)
     {
         RFileIO::readBinary(modelFile,this->volumes[i]);
     }
+    if (modelFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::readBinary(modelFile,this->nextElementGroupPhysicalId);
+    }
+    else
+    {
+        this->migrateLegacyElementGroupPhysicalIds();
+    }
+    this->validatePhysicalIds();
     uint nVectorFields = 0;
     RFileIO::readBinary(modelFile,nVectorFields);
     RLogger::debug("Vector fields: %u\n",nVectorFields);
@@ -8058,6 +8264,7 @@ void RModel::writeAscii(const QString &fileName) const
         RFileIO::writeAscii(modelFile,this->volumes[i],false);
         RFileIO::writeNewLineAscii(modelFile);
     }
+    RFileIO::writeAscii(modelFile,this->nextElementGroupPhysicalId);
     RLogger::debug("Vector fields: %u\n",this->getNVectorFields());
     RFileIO::writeAscii(modelFile,this->getNVectorFields());
     for (uint i=0;i<this->getNVectorFields();i++)
@@ -8246,6 +8453,7 @@ void RModel::writeBinary(const QString &fileName) const
         RProgressPrint(cstep++,nsteps);
         RFileIO::writeBinary(modelFile,this->volumes[i]);
     }
+    RFileIO::writeBinary(modelFile,this->nextElementGroupPhysicalId);
     RLogger::debug("Vector fields: %u\n",this->getNVectorFields());
     RFileIO::writeBinary(modelFile,this->getNVectorFields());
     for (uint i=0;i<this->getNVectorFields();i++)

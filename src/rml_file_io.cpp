@@ -3148,6 +3148,14 @@ void RFileIO::writeBinary(RSaveFile &outFile, const REntityGroup &entityGroup)
 
 void RFileIO::readAscii(RFile &inFile, RElementGroup &elementGroup)
 {
+    if (inFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::readAscii(inFile,elementGroup.physicalId);
+    }
+    else
+    {
+        elementGroup.physicalId = 0;
+    }
     RFileIO::readAscii(inFile,static_cast<REntityGroup&>(elementGroup));
     unsigned int nElementIDs = 0;
     RFileIO::readAscii(inFile,nElementIDs);
@@ -3191,6 +3199,14 @@ void RFileIO::readAscii(RFile &inFile, RElementGroup &elementGroup)
 
 void RFileIO::readBinary(RFile &inFile, RElementGroup &elementGroup)
 {
+    if (inFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::readBinary(inFile,elementGroup.physicalId);
+    }
+    else
+    {
+        elementGroup.physicalId = 0;
+    }
     RFileIO::readBinary(inFile,static_cast<REntityGroup&>(elementGroup));
     unsigned int nElementIDs = 0;
     RFileIO::readBinary(inFile,nElementIDs);
@@ -3234,6 +3250,14 @@ void RFileIO::readBinary(RFile &inFile, RElementGroup &elementGroup)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RElementGroup &elementGroup, bool addNewLine)
 {
+    if (outFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::writeAscii(outFile,elementGroup.physicalId,addNewLine);
+        if (!addNewLine)
+        {
+            RFileIO::writeAscii(outFile,' ',false);
+        }
+    }
     RFileIO::writeAscii(outFile,static_cast<const REntityGroup&>(elementGroup),addNewLine);
     if (!addNewLine)
     {
@@ -3297,6 +3321,10 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RElementGroup &elementGroup, 
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RElementGroup &elementGroup)
 {
+    if (outFile.getVersion() >= RVersion(1,3,18))
+    {
+        RFileIO::writeBinary(outFile,elementGroup.physicalId);
+    }
     RFileIO::writeBinary(outFile,static_cast<const REntityGroup&>(elementGroup));
     RFileIO::writeBinary(outFile,uint(elementGroup.size()));
     for (unsigned int i=0;i<elementGroup.elementIDs.size();i++)

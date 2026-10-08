@@ -47,6 +47,10 @@ foreach(test_name IN LISTS range_model_lib_tests)
     endif()
 endforeach()
 
+target_compile_definitions(tst_model_physical_ids PRIVATE
+    RANGE_MODEL_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+)
+
 if(RANGE_GMSH_RUNTIME)
     foreach(test_name IN LISTS range_model_lib_tests)
         add_custom_command(TARGET ${test_name} POST_BUILD

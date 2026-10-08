@@ -35,6 +35,7 @@ void RElementGroup::_init (const RElementGroup *pElementGroup)
 {
     if (pElementGroup)
     {
+        this->physicalId = pElementGroup->physicalId;
         this->elementIDs = pElementGroup->elementIDs;
         this->bConditions = pElementGroup->bConditions;
         this->eConditions = pElementGroup->eConditions;
@@ -42,7 +43,17 @@ void RElementGroup::_init (const RElementGroup *pElementGroup)
         this->material = pElementGroup->material;
         this->data = pElementGroup->data;
     }
+    else
+    {
+        this->physicalId = 0;
+    }
 } /* RElementGroup::_init */
+
+
+uint RElementGroup::getPhysicalId() const
+{
+    return this->physicalId;
+} /* RElementGroup::getPhysicalId */
 
 
 void RElementGroup::add (unsigned int elementID)
