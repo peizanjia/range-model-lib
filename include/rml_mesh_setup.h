@@ -49,13 +49,13 @@ class RMeshSetup
         double getMinEdgeLength() const;
 
         //! Set minimum edge length.
-        void setMinEdgeLength(double minEdgeLength);
+        void setMinEdgeLength(double minEdgeLength) noexcept;
 
         //! Return maximum edge length.
         double getMaxEdgeLength() const;
 
         //! Set maximum edge length.
-        void setMaxEdgeLength(double maxEdgeLength);
+        void setMaxEdgeLength(double maxEdgeLength) noexcept;
 
         //! Convert to printable string.
         QString toString() const;

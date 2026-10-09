@@ -6492,6 +6492,17 @@ void RFileIO::readBinary(RFile &inFile, RMeshSetup &meshSetup)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RMeshSetup &meshSetup, bool addNewLine)
 {
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    // GUI initialization retains nonzero bbox sizing seeds on reload. Default
+    // text precision would overwrite their exact values and break strict
+    // UNBOUND rebinding verification. Keep only this record round-trip safe.
+    outFile.getTextStream().setRealNumberPrecision(17);
+
     RFileIO::writeAscii(outFile,uint(meshSetup.variables.size()),addNewLine);
     if (!addNewLine)
     {

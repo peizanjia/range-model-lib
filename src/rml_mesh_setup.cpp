@@ -53,7 +53,7 @@ double RMeshSetup::getMinEdgeLength() const
     return this->minEdgeLength;
 }
 
-void RMeshSetup::setMinEdgeLength(double minEdgeLength)
+void RMeshSetup::setMinEdgeLength(double minEdgeLength) noexcept
 {
     this->minEdgeLength = minEdgeLength;
 }
@@ -63,7 +63,7 @@ double RMeshSetup::getMaxEdgeLength() const
     return this->maxEdgeLength;
 }
 
-void RMeshSetup::setMaxEdgeLength(double maxEdgeLength)
+void RMeshSetup::setMaxEdgeLength(double maxEdgeLength) noexcept
 {
     this->maxEdgeLength = maxEdgeLength;
 }

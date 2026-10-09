@@ -79,6 +79,8 @@ class RProblemTaskItem
 
         //! Allow RFileIO to access private members.
         friend class RFileIO;
+        //! Atomic model publication swaps prepared task storage without copying.
+        friend class RModel;
 
 };
 

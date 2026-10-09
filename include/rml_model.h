@@ -2,6 +2,7 @@
 #define RML_MODEL_H
 
 #include <vector>
+#include <functional>
 #include <QStringList>
 
 #include <rbl_bvector.h>
@@ -143,6 +144,14 @@ class RModel : public RProblem, public RResults
 
         //! Assignment operator.
         RModel &operator =(const RModel &model);
+
+        //! Trusted native publication seam for an already approved static binding.
+        //! The validator checks the fully prepared supported-state hash before
+        //! publication. This callback is C++ only and is never protocol input.
+        //! All allocation and validation precedes nonthrowing storage swaps;
+        //! GUI subclasses, source metadata, results and display data survive.
+        bool applyStaticMeshBindingCandidate(const RModel &candidate,
+            const std::function<bool(const RModel &)> &validatePrepared, QString *error = nullptr);
 
         //! Update model data.
         void update(const RModel &rModel);

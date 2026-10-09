@@ -4,12 +4,15 @@
 #include <QFileInfo>
 #include <QTextStream>
 #include <QSetIterator>
+#include <QTemporaryDir>
+#include <stdexcept>
 
 #include <cmath>
 #include <omp.h>
 #include <stack>
 #include <float.h>
 #include <set>
+#include <tuple>
 
 #include <rbl_error.h>
 #include <rbl_logger.h>
@@ -22,6 +25,210 @@
 #include "rml_polygon.h"
 
 const RVersion RModel::version = RVersion(FILE_MAJOR_VERSION,FILE_MINOR_VERSION,MODEL_FILE_RELEASE_VERSION);
+
+namespace
+{
+template<class T> QByteArray bindingPublicationBytes(const T &value)
+{
+    QTemporaryDir directory;
+    if (!directory.isValid()) throw std::runtime_error("Cannot stage binding publication validation.");
+    const QString path = directory.filePath("binding.bin");
+    RSaveFile output(path, RSaveFile::BINARY);
+    output.setVersion(RModel::version);
+    if (!output.open(QIODevice::WriteOnly)) throw std::runtime_error("Cannot write binding publication validation.");
+    RFileIO::writeBinary(output, value);
+    if (!output.commit()) throw std::runtime_error("Cannot commit binding publication validation.");
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) throw std::runtime_error("Cannot read binding publication validation.");
+    const QByteArray bytes = input.readAll();
+    if (input.error() != QFile::NoError) throw std::runtime_error("Cannot complete binding publication validation.");
+    return bytes;
+}
+bool bindingPublicationDefaultSetup(const RModel &model,const QByteArray &defaults)
+{
+    const auto &setup=model.getProblemSetup();
+    // Inactive restart vectors are omitted by native serialization. Require
+    // their explicit defaults as well as the complete serialized remainder.
+    const auto fields=[](const RStructuralDynamicsRestartData &s) {
+        return std::tie(s.available,s.completedSteps,s.time,s.fixedTimeStep,s.meshNodeCount,s.meshElementCount,
+            s.physicalDofCount,s.meshFingerprint,s.dofFingerprint,s.systemFingerprint,s.q,s.v,s.a,s.externalForce,
+            s.cumulativeExternalWork,s.cumulativeDampingDissipation,s.initialMechanicalEnergy,s.supportResponseAvailable,
+            s.supportFingerprint,s.supportReactions,s.supportPowers,s.cumulativeSupportWork,s.controlAvailable,
+            s.controlProtocolVersion,s.controlFingerprint,s.controlChannelIds,s.controlLastCommands,s.controlPowers,
+            s.cumulativeControlWork,s.controlControllerState,s.controlDeterministicSeed);
+    };
+    const RStructuralDynamicsRestartData defaultRestart;
+    if (fields(setup.getStructuralDynamicsRestartData())!=fields(defaultRestart)) return false;
+    const auto &interactions=setup.getStructuralInteractionSetup();
+    if (!interactions.getLinearConstraints().empty() || !interactions.getCouplings().empty()
+        || !interactions.getSensors().empty() || !interactions.getActuators().empty() || !interactions.getPrescribedMotions().empty()
+        || !setup.getStructuralControlSetup().controllerId.isEmpty() || !setup.getStructuralControlSetup().channelConditioning.empty()
+        || !setup.getStructuralCableSetup().meshFingerprint.isEmpty() || !setup.getStructuralCableSetup().members.empty()
+        || !setup.getStructuralPiezoSetup().meshFingerprint.isEmpty() || !setup.getStructuralPiezoSetup().ports.empty()
+        || !setup.getStructuralPiezoSetup().nodalBoundaryConditions.empty() || !setup.getRadiationSetup().getViewFactorMatrixFile().isEmpty()
+        || !setup.getStructuralThermalControlSetup().channels.empty() || !setup.getStructuralThermalControlSetup().sparseObservationNodeIds.empty()
+        || !setup.getStructuralDynamicsSetup().getModalDampingRatios().empty() || !setup.getMeshSetup().getVariables().empty()) return false;
+    if (bindingPublicationBytes(setup)==defaults) return true;
+    // Recompute GUI bbox sizing seeds from all live coordinates, never from
+    // retained bounds. Only these two exact values may differ from defaults.
+    if (!model.getNNodes()) return false;
+    double low[3]{model.getNode(0).getX(),model.getNode(0).getY(),model.getNode(0).getZ()};
+    double high[3]{low[0],low[1],low[2]};
+    for (uint n=0;n<model.getNNodes();++n)
+    {
+        const double p[3]{model.getNode(n).getX(),model.getNode(n).getY(),model.getNode(n).getZ()};
+        for (int a=0;a<3;++a)
+        {
+            if (!std::isfinite(p[a]) || std::abs(p[a])>1e6) return false;
+            low[a]=std::min(low[a],p[a]); high[a]=std::max(high[a],p[a]);
+        }
+    }
+    const double volumeConstraint=(high[0]-low[0])*(high[1]-low[1])*(high[2]-low[2])/1000.0;
+    const double maxSeed=std::cbrt(12.0*volumeConstraint/std::sqrt(2.0)),minSeed=maxSeed*0.1;
+    if (!std::isfinite(maxSeed) || !(minSeed>0)
+        || setup.getMeshSetup().getMinEdgeLength()!=minSeed || setup.getMeshSetup().getMaxEdgeLength()!=maxSeed) return false;
+    RProblemSetup remainder(setup);
+    remainder.getMeshSetup().setMinEdgeLength(0.0); remainder.getMeshSetup().setMaxEdgeLength(0.0);
+    return bindingPublicationBytes(remainder)==defaults;
+}
+}
+
+bool RModel::applyStaticMeshBindingCandidate(const RModel &candidate,
+    const std::function<bool(const RModel &)> &validatePrepared, QString *error)
+{
+    const auto fail = [&](const QString &message) { if (error) *error = message; return false; };
+    try
+    {
+        const bool forward=this->getProblemTaskTree().getProblemTypeMask()==R_PROBLEM_NONE
+            && candidate.getProblemTaskTree().getProblemTypeMask()==R_PROBLEM_STRESS;
+        const bool reverse=this->getProblemTaskTree().getProblemTypeMask()==R_PROBLEM_STRESS
+            && candidate.getProblemTaskTree().getProblemTypeMask()==R_PROBLEM_NONE;
+        const RModel &unbound=forward ? *this : candidate;
+        const RModel &bound=forward ? candidate : *this;
+        if (!validatePrepared || (!forward && !reverse)
+            || unbound.getProblemTaskTree().getNChildren() || unbound.getNPoints() || this->getNLines()
+            || this->getNVolumes() != 1 || !this->getNSurfaces() || this->getNVariables()
+            || candidate.getNVariables() || candidate.getNNodes() != this->getNNodes()
+            || candidate.getNLines() || candidate.getNSurfaces() != this->getNSurfaces()
+            || candidate.getNVolumes() != this->getNVolumes() || !bound.getNPoints()
+            || bound.getNPoints() > 1000
+            || quint64(bound.getNElements()) != quint64(unbound.getNElements()) + bound.getNPoints()
+            || bindingPublicationBytes(unbound.getProblemTaskTree()) != bindingPublicationBytes(RProblemTaskItem())
+            || bindingPublicationBytes(bound.getProblemTaskTree())
+                != bindingPublicationBytes(RProblemTaskItem::generateDefaultTree(R_PROBLEM_STRESS)))
+            return fail(QStringLiteral("Static binding publication requires a validated UNBOUND/BOUND_STATIC transition."));
+        const QByteArray defaultSetup = bindingPublicationBytes(RProblemSetup());
+        const QByteArray defaultTime = bindingPublicationBytes(RTimeSolver());
+        if (!bindingPublicationDefaultSetup(*this,defaultSetup)
+            || !bindingPublicationDefaultSetup(candidate,defaultSetup)
+            || bindingPublicationBytes(this->getTimeSolver()) != defaultTime
+            || bindingPublicationBytes(candidate.getTimeSolver()) != defaultTime
+            || !this->getMonitoringPointManager().empty() || !candidate.getMonitoringPointManager().empty()
+            || this->getNVectorFields() || candidate.getNVectorFields()
+            || this->getNScalarFields() || candidate.getNScalarFields()
+            || this->getNStreamLines() || candidate.getNStreamLines()
+            || this->getNCuts() || candidate.getNCuts() || this->getNIsos() || candidate.getNIsos())
+            return fail(QStringLiteral("Static binding publication cannot replace retained analysis or derived state."));
+        this->validatePhysicalIds();
+        candidate.validatePhysicalIds();
+        if (candidate.nextNodePhysicalId != this->nextNodePhysicalId
+            || this->nextElementPhysicalId == RConstants::eod
+            || this->nextElementGroupPhysicalId == RConstants::eod)
+            return fail(QStringLiteral("Static binding publication cannot rewind or exhaust source identity allocators."));
+        for (uint n = 0; n < this->getNNodes(); ++n)
+            if (!(this->getNode(n) == candidate.getNode(n))
+                || this->getNodePhysicalId(n) != candidate.getNodePhysicalId(n))
+                return fail(QStringLiteral("Static binding publication cannot change source nodes."));
+        for (uint e = 0; e < unbound.getNElements(); ++e)
+        {
+            const auto &before = this->getElement(e), &after = candidate.getElement(e);
+            if ((before.getType() != R_ELEMENT_TRI1 && before.getType() != R_ELEMENT_TETRA1)
+                || before.getType() != after.getType() || before.size() != after.size()
+                || this->getElementPhysicalId(e) != candidate.getElementPhysicalId(e))
+                return fail(QStringLiteral("Static binding publication cannot change source elements."));
+            for (uint j = 0; j < before.size(); ++j)
+                if (before.getNodeId(j) != after.getNodeId(j))
+                    return fail(QStringLiteral("Static binding publication cannot reorder source connectivity."));
+        }
+        QSet<uint> targetNodes;
+        for (uint p = 0; p < bound.getNPoints(); ++p)
+        {
+            const auto &point = bound.getPoint(p);
+            const uint e = unbound.getNElements() + p;
+            const auto &element = bound.getElement(e);
+            if (point.size() != 1 || point.get(0) != e || element.getType() != R_ELEMENT_POINT
+                || element.size() != 1 || element.getNodeId(0) >= this->getNNodes()
+                || targetNodes.contains(element.getNodeId(0)) || point.getNInitialConditions()
+                || point.getNEnvironmentConditions() || !point.getData().getVariableData().empty())
+                return fail(QStringLiteral("Static binding publication requires unique owned single-node POINT targets."));
+            targetNodes.insert(element.getNodeId(0));
+        }
+        // Prepare from the live model so render/selection data never comes from
+        // the solver candidate. No operation below this block touches live data.
+        RModel prepared(*this);
+        for (uint g = 0; g < this->getNSurfaces()+this->getNVolumes(); ++g)
+        {
+            const bool surface=g<this->getNSurfaces();
+            const uint groupPosition=surface ? g : g-this->getNSurfaces();
+            const auto *source = surface ? static_cast<const RElementGroup *>(&this->getSurface(groupPosition))
+                : static_cast<const RElementGroup *>(&this->getVolume(groupPosition));
+            REntityGroupType type = R_ENTITY_GROUP_NONE; uint position = RConstants::eod;
+            if (!candidate.findElementGroupByPhysicalId(source->getPhysicalId(), &type, &position))
+                return fail(QStringLiteral("Static binding publication lost a source group identity."));
+            const auto *next = type == R_ENTITY_GROUP_SURFACE ? static_cast<const RElementGroup *>(&candidate.getSurface(position))
+                : type == R_ENTITY_GROUP_VOLUME ? static_cast<const RElementGroup *>(&candidate.getVolume(position)) : nullptr;
+            const auto expectedType = g < this->getNSurfaces() ? R_ENTITY_GROUP_SURFACE : R_ENTITY_GROUP_VOLUME;
+            if (!next || type != expectedType || position != (g < this->getNSurfaces() ? g : g - this->getNSurfaces())
+                || next->size() != source->size() || next->getName() != source->getName()
+                || source->getNBoundaryConditions() || next->getNBoundaryConditions()
+                || source->getNInitialConditions() || next->getNInitialConditions()
+                || source->getNEnvironmentConditions() || next->getNEnvironmentConditions()
+                || !source->getData().getVariableData().empty() || !next->getData().getVariableData().empty())
+                return fail(QStringLiteral("Static binding publication cannot alter source groups or retained bindings."));
+            for (uint j = 0; j < source->size(); ++j)
+                if (source->get(j) != next->get(j))
+                    return fail(QStringLiteral("Static binding publication cannot alter source group membership."));
+            if (surface) prepared.getSurface(groupPosition).setMaterial(next->getMaterial());
+            else prepared.getVolume(groupPosition).setMaterial(next->getMaterial());
+        }
+        prepared.elements = candidate.elements;
+        prepared.points = candidate.points;
+        prepared.taskTree = candidate.taskTree;
+        const double targetMinSeed=candidate.getProblemSetup().getMeshSetup().getMinEdgeLength();
+        const double targetMaxSeed=candidate.getProblemSetup().getMeshSetup().getMaxEdgeLength();
+        RMeshSetup &liveMeshSetup=this->problemSetup.getMeshSetup();
+        prepared.problemSetup.getMeshSetup().setMinEdgeLength(targetMinSeed);
+        prepared.problemSetup.getMeshSetup().setMaxEdgeLength(targetMaxSeed);
+        // Undo removes owned tail targets; redo may restore their captured IDs.
+        // The trusted hash callback authorizes these identities. Allocator
+        // high-water marks never rewind, so subsequent edits cannot recycle IDs.
+        prepared.nextElementPhysicalId = std::max(this->nextElementPhysicalId,candidate.nextElementPhysicalId);
+        prepared.nextElementGroupPhysicalId = std::max(this->nextElementGroupPhysicalId,candidate.nextElementGroupPhysicalId);
+        prepared.nelements = uint(prepared.elements.size());
+        prepared.validatePhysicalIds();
+        if (!validatePrepared(prepared))
+            return fail(QStringLiteral("Prepared static binding differs from the accepted supported state."));
+        // The commit contains only std::allocator vector swaps and scalar
+        // writes (including noexcept double-only sizing setters). No callbacks,
+        // serializers or allocations run here.
+        this->elements.swap(prepared.elements);
+        this->points.swap(prepared.points);
+        this->surfaces.swap(prepared.surfaces);
+        this->volumes.swap(prepared.volumes);
+        this->taskTree.children.swap(prepared.taskTree.children);
+        this->taskTree.problemType = prepared.taskTree.problemType;
+        this->taskTree.nIterations = prepared.taskTree.nIterations;
+        this->nelements = prepared.nelements;
+        this->nextElementPhysicalId = prepared.nextElementPhysicalId;
+        this->nextElementGroupPhysicalId = prepared.nextElementGroupPhysicalId;
+        liveMeshSetup.setMinEdgeLength(targetMinSeed);
+        liveMeshSetup.setMaxEdgeLength(targetMaxSeed);
+        return true;
+    }
+    catch (const RError &failure) { return fail(failure.getMessage()); }
+    catch (const std::exception &failure) { return fail(QString::fromUtf8(failure.what())); }
+    catch (...) { return fail(QStringLiteral("Static binding preparation failed before publication.")); }
+}
 
 void RModel::_init (const RModel *pModel)
 {
