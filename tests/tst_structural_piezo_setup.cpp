@@ -10,6 +10,7 @@
 #include "rml_model.h"
 #include "rml_problem.h"
 #include "rml_structural_product_profile.h"
+#include "rml_structural_dynamics_restart_data.h"
 
 static RModel makePiezoSetupModel(RElementType type = R_ELEMENT_TRUSS1)
 {
@@ -56,6 +57,9 @@ class TestStructuralPiezoSetup : public QObject
     Q_OBJECT
 
 private slots:
+    void mixedClassificationAndBinding();
+    void mixedPersistence_data();
+    void mixedPersistence();
     void defaultsAndCopy();
     void modelRoundTrip_data();
     void modelRoundTrip();
@@ -80,6 +84,7 @@ void TestStructuralPiezoSetup::defaultsAndCopy()
     QVERIFY(!defaults.enabled);
     QVERIFY(defaults.meshFingerprint.isEmpty());
     QVERIFY(defaults.ports.empty());
+    QVERIFY(defaults.passiveElementIds.empty());
     defaults.validate();
 
     RModel model = makePiezoSetupModel();
@@ -114,7 +119,7 @@ void TestStructuralPiezoSetup::modelRoundTrip_data()
 void TestStructuralPiezoSetup::modelRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.18"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.19"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 
@@ -639,6 +644,188 @@ void TestStructuralPiezoSetup::electricChargeVariableContract()
     const std::vector<RVariableType> stressVariableTypes = RProblem::getVariableTypes(R_PROBLEM_STRESS);
     QVERIFY(std::find(stressVariableTypes.begin(),stressVariableTypes.end(),R_VARIABLE_ELECTRIC_CHARGE) !=
             stressVariableTypes.end());
+}
+
+void TestStructuralPiezoSetup::mixedClassificationAndBinding()
+{
+    RModel model = makePiezoNetworkModel();
+    model.getNode(1).set(1.0,2.0,3.0);
+    RElement point(R_ELEMENT_POINT);
+    point.setNodeId(0,0);
+    model.addElement(point);
+    RStructuralPiezoSetup setup;
+    setup.enabled = true;
+    setup.ports = {makePiezoPort()};
+    setup.passiveElementIds = {1};
+    setup.bindToModel(model);
+    setup.validate(model);
+    const QString fingerprint = setup.meshFingerprint;
+    QVERIFY(fingerprint != RStructuralDynamicsRestartData::computeMeshFingerprint(model));
+    RStructuralPiezoSetup swapped = setup;
+    swapped.ports[0].elementId = 1;
+    swapped.passiveElementIds = {0};
+    QVERIFY_EXCEPTION_THROWN(swapped.validate(model),RError);
+    swapped.bindToModel(model);
+    QVERIFY(swapped.meshFingerprint != fingerprint);
+
+    RStructuralPiezoSetup invalid = setup;
+    invalid.passiveElementIds = {1,1};
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid.passiveElementIds = {0};
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid.passiveElementIds = {9};
+    QVERIFY_EXCEPTION_THROWN(invalid.bindToModel(model),RError);
+    QCOMPARE(invalid.meshFingerprint,fingerprint);
+    invalid.passiveElementIds = {2}; // POINT cannot be a passive rod.
+    QVERIFY_EXCEPTION_THROWN(invalid.bindToModel(model),RError);
+    RModel missing = model;
+    RElement extra(R_ELEMENT_TRUSS1);
+    extra.setNodeId(0,0);
+    extra.setNodeId(1,2);
+    missing.addElement(extra);
+    QVERIFY_EXCEPTION_THROWN(setup.bindToModel(missing),RError);
+    QCOMPARE(setup.meshFingerprint,fingerprint);
+    invalid = setup;
+    invalid.enabled = false;
+    invalid.passiveElementIds = {1,1};
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid = setup;
+    invalid.passiveElementIds.resize(1000001u,1);
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    RModel nonFinite = model;
+    nonFinite.getNode(2).setZ(std::numeric_limits<double>::infinity());
+    QVERIFY_EXCEPTION_THROWN(setup.bindToModel(nonFinite),RError);
+    RProblemSetup stored;
+    stored.setStructuralPiezoSetup(setup);
+    const RProblemSetup copied(stored);
+    QCOMPARE(copied.getStructuralPiezoSetup().passiveElementIds.size(),size_t(1));
+    QCOMPARE(copied.getStructuralPiezoSetup().passiveElementIds[0],uint(1));
+    RModel degenerate = model;
+    degenerate.getElement(1).setNodeId(1,1);
+    QVERIFY_EXCEPTION_THROWN(setup.bindToModel(degenerate),RError);
+
+    invalid = setup;
+    invalid.electricalMode = RStructuralPiezoElectricalMode::NodalPotential;
+    invalid.ports[0].voltage = 0.0;
+    invalid.nodalBoundaryConditions = {{0,RStructuralPiezoBoundaryType::Potential,0.0}};
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+    invalid.enabled = false;
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError); // Retained disabled data is checked too.
+    invalid = setup;
+    invalid.ports.clear();
+    QVERIFY_EXCEPTION_THROWN(invalid.validate(),RError);
+
+    RStructuralPiezoSetup legacy;
+    legacy.enabled = true;
+    legacy.ports = {makePiezoPort(),makePiezoPort(QStringLiteral("second"),1)};
+    legacy.bindToModel(model);
+    QCOMPARE(legacy.meshFingerprint,RStructuralDynamicsRestartData::computeMeshFingerprint(model));
+    setup.meshFingerprint = legacy.meshFingerprint;
+    QVERIFY_EXCEPTION_THROWN(setup.validate(model),RError);
+}
+
+void TestStructuralPiezoSetup::mixedPersistence_data()
+{
+    QTest::addColumn<bool>("binary");
+    QTest::newRow("ascii") << false;
+    QTest::newRow("binary") << true;
+}
+
+void TestStructuralPiezoSetup::mixedPersistence()
+{
+    QFETCH(bool,binary);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    RModel source = makePiezoNetworkModel();
+    source.getNode(1).set(1.0,2.0,3.0);
+    RStructuralPiezoSetup setup;
+    setup.enabled = true;
+    setup.ports = {makePiezoPort()};
+    setup.passiveElementIds = {1};
+    setup.bindToModel(source);
+    source.getProblemSetup().setStructuralPiezoSetup(setup);
+    const QString modelPath = directory.filePath(QStringLiteral("mixed.")+RModel::getDefaultFileExtension(binary));
+    source.write(modelPath,false);
+    RModel restored;
+    restored.read(modelPath);
+    const auto &actual = restored.getProblemSetup().getStructuralPiezoSetup();
+    QCOMPARE(actual.passiveElementIds.size(),size_t(1));
+    QCOMPARE(actual.passiveElementIds[0],uint(1));
+    QCOMPARE(actual.ports[0].voltage,setup.ports[0].voltage);
+    QCOMPARE(actual.meshFingerprint,setup.meshFingerprint);
+    actual.validate(restored);
+
+    const QString path = directory.filePath(QStringLiteral("setup"));
+    for (const int release : {14,18})
+    {
+        RSaveFile output(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        output.setVersion(RVersion(1,3,release));
+        QVERIFY(output.open(QIODevice::WriteOnly));
+        if (binary) QVERIFY_EXCEPTION_THROWN(RFileIO::writeBinary(output,setup),RError);
+        else QVERIFY_EXCEPTION_THROWN(RFileIO::writeAscii(output,setup),RError);
+        output.cancelWriting();
+    }
+    RStructuralPiezoSetup legacy = setup;
+    legacy.passiveElementIds.clear();
+    legacy.bindToModel(source);
+    {
+        RSaveFile output(path,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
+        output.setVersion(RVersion(1,3,18));
+        QVERIFY(output.open(QIODevice::WriteOnly));
+        if (binary) RFileIO::writeBinary(output,legacy);
+        else RFileIO::writeAscii(output,legacy);
+        QVERIFY(output.commit());
+    }
+    {
+        RFile input(path,binary ? RFile::BINARY : RFile::ASCII);
+        input.setVersion(RVersion(1,3,18));
+        QVERIFY(input.open(QIODevice::ReadOnly));
+        RStructuralPiezoSetup target = setup;
+        if (binary) RFileIO::readBinary(input,target);
+        else RFileIO::readAscii(input,target);
+        QVERIFY(target.passiveElementIds.empty());
+        QCOMPARE(target.meshFingerprint,legacy.meshFingerprint);
+    }
+    // A valid pre-19 prefix followed by malformed new tail must never replace target.
+    QFile prefixFile(path);
+    QVERIFY(prefixFile.open(QIODevice::ReadOnly));
+    const QByteArray prefix = prefixFile.readAll();
+    prefixFile.close();
+    std::vector<QByteArray> tails;
+    if (binary)
+    {
+        for (const uint count : {1u,1000001u})
+            tails.emplace_back(reinterpret_cast<const char*>(&count),sizeof(count));
+        const uint count = 2, elementId = 1;
+        QByteArray duplicate(reinterpret_cast<const char*>(&count),sizeof(count));
+        duplicate.append(reinterpret_cast<const char*>(&elementId),sizeof(elementId));
+        duplicate.append(reinterpret_cast<const char*>(&elementId),sizeof(elementId));
+        tails.push_back(duplicate);
+        tails.push_back(QByteArray(1,char(1))); // Partial count.
+    }
+    else
+    {
+        tails = {QByteArray("\n1\n"),QByteArray("\n1000001\n"),QByteArray("\n2\n1\n1\n"),
+                 QByteArray("\n1\n-1\n"),QByteArray("\n1\ninvalid\n")};
+    }
+    tails.push_back(QByteArray()); // Missing tail count.
+    for (const QByteArray &tail : tails)
+    {
+        QFile corrupt(path);
+        QVERIFY(corrupt.open(QIODevice::WriteOnly));
+        QCOMPARE(corrupt.write(prefix+tail),qint64(prefix.size()+tail.size()));
+        corrupt.close();
+        RFile input(path,binary ? RFile::BINARY : RFile::ASCII);
+        input.setVersion(RVersion(1,3,19));
+        QVERIFY(input.open(QIODevice::ReadOnly));
+        RStructuralPiezoSetup target = setup;
+        if (binary) QVERIFY_EXCEPTION_THROWN(RFileIO::readBinary(input,target),RError);
+        else QVERIFY_EXCEPTION_THROWN(RFileIO::readAscii(input,target),RError);
+        QCOMPARE(target.passiveElementIds.size(),size_t(1));
+        QCOMPARE(target.passiveElementIds[0],uint(1));
+        QCOMPARE(target.meshFingerprint,setup.meshFingerprint);
+        QCOMPARE(target.ports[0].id,setup.ports[0].id);
+    }
 }
 
 QTEST_APPLESS_MAIN(TestStructuralPiezoSetup)

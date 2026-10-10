@@ -617,7 +617,7 @@ void TestModelPhysicalIds::currentAsciiAndBinaryFormatsRoundTripIdentifiers()
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     const RModel source = makeGroupModel();
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.18"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.19"));
 
     for (bool binary : {false,true})
     {
@@ -854,7 +854,9 @@ void TestModelPhysicalIds::futureModelVersionsAreRejectedBeforeReadingBody()
                                                            : QStringLiteral("future.ram"));
         RSaveFile output(fileName,binary ? RSaveFile::BINARY : RSaveFile::ASCII);
         QVERIFY(output.open(QIODevice::WriteOnly));
-        const RFileHeader futureHeader(R_FILE_TYPE_MODEL,RVersion(1,3,19));
+        const RFileHeader futureHeader(R_FILE_TYPE_MODEL,
+            RVersion(RModel::version.getMajor(),RModel::version.getMinor(),
+                     RModel::version.getRelease()+1));
         if (binary) RFileIO::writeBinary(output,futureHeader);
         else RFileIO::writeAscii(output,futureHeader);
         QVERIFY(output.commit());

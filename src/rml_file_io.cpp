@@ -5312,6 +5312,30 @@ void RFileIO::readAscii(RFile &inFile, RStructuralPiezoSetup &setup)
             boundary.value = readFiniteDouble("nodal boundary value");
         }
     }
+    if (inFile.getVersion() > RVersion(1,3,18))
+    {
+        auto readPassiveUInt = [&]()
+        {
+            QString token;
+            stream >> token;
+            bool ok = false;
+            const uint value = token.toUInt(&ok);
+            if (stream.status() != QTextStream::Ok || !ok || token.startsWith(QLatin1Char('-')))
+            {
+                throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                             "Invalid or truncated structural piezo passive element data.");
+            }
+            return value;
+        };
+        const uint passiveCount = readPassiveUInt();
+        if (passiveCount > 1000000u)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Excessive structural piezo passive element count (%u).",passiveCount);
+        }
+        result.passiveElementIds.resize(passiveCount);
+        for (uint &elementId : result.passiveElementIds) elementId = readPassiveUInt();
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -5400,6 +5424,21 @@ void RFileIO::readBinary(RFile &inFile, RStructuralPiezoSetup &setup)
             readExact(&boundary.value,qint64(sizeof(boundary.value)),"nodal boundary value");
         }
     }
+    if (inFile.getVersion() > RVersion(1,3,18))
+    {
+        uint passiveCount = 0;
+        readExact(&passiveCount,qint64(sizeof(passiveCount)),"passive element count");
+        if (passiveCount > 1000000u)
+        {
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                         "Excessive structural piezo passive element count (%u).",passiveCount);
+        }
+        result.passiveElementIds.resize(passiveCount);
+        for (uint &elementId : result.passiveElementIds)
+        {
+            readExact(&elementId,qint64(sizeof(elementId)),"passive element ID");
+        }
+    }
     result.validate();
     setup = std::move(result);
 }
@@ -5407,6 +5446,12 @@ void RFileIO::readBinary(RFile &inFile, RStructuralPiezoSetup &setup)
 void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup, bool addNewLine)
 {
     setup.validate();
+    const bool writePassiveTail = outFile.getVersion() > RVersion(1,3,18);
+    if (!writePassiveTail && !setup.passiveElementIds.empty())
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Passive piezo element data cannot be written to a pre-1.3.19 model file.");
+    }
     const bool writeNodalTail = outFile.getVersion() > RVersion(1,3,14);
     if (!writeNodalTail &&
         (setup.electricalMode != RStructuralPiezoElectricalMode::LegacyTerminalVoltage ||
@@ -5452,11 +5497,22 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralPiezoSetup &setup,
             write(boundary.value);
         }
     }
+    if (writePassiveTail)
+    {
+        write(uint(setup.passiveElementIds.size()));
+        for (const uint elementId : setup.passiveElementIds) write(elementId);
+    }
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup)
 {
     setup.validate();
+    const bool writePassiveTail = outFile.getVersion() > RVersion(1,3,18);
+    if (!writePassiveTail && !setup.passiveElementIds.empty())
+    {
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,
+                     "Passive piezo element data cannot be written to a pre-1.3.19 model file.");
+    }
     const bool writeNodalTail = outFile.getVersion() > RVersion(1,3,14);
     if (!writeNodalTail &&
         (setup.electricalMode != RStructuralPiezoElectricalMode::LegacyTerminalVoltage ||
@@ -5486,6 +5542,11 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralPiezoSetup &setup
             RFileIO::writeBinary(outFile,int(boundary.type));
             RFileIO::writeBinary(outFile,boundary.value);
         }
+    }
+    if (writePassiveTail)
+    {
+        RFileIO::writeBinary(outFile,uint(setup.passiveElementIds.size()));
+        for (const uint elementId : setup.passiveElementIds) RFileIO::writeBinary(outFile,elementId);
     }
 }
 

@@ -47,12 +47,114 @@ void addTerm(RLinearConstraint &equation, uint nodeId, RDofType dof, double coef
     equation.terms.push_back(term);
 }
 
-double distanceSquared(const RNode &a, const RNode &b)
+bool validateSetElements(const RModel &model, const QString &setName,
+                         REntityGroupType entityType, const QString &objectId,
+                         RStructuralValidationReport &report)
 {
-    const double dx = a.getX()-b.getX();
-    const double dy = a.getY()-b.getY();
-    const double dz = a.getZ()-b.getZ();
-    return dx*dx+dy*dy+dz*dz;
+    bool valid = true;
+    for (uint groupId=0;groupId<model.getNElementGroups();groupId++)
+    {
+        const RElementGroup *group = model.getElementGroupPtr(groupId);
+        if (!group || group->getName() != setName ||
+            (entityType != R_ENTITY_GROUP_NONE && entityType != model.getEntityGroupType(groupId,true)))
+            continue;
+        for (uint i=0;i<group->size();i++)
+        {
+            if (group->get(i) >= model.getNElements())
+            {
+                report.add(RStructuralDiagnosticSeverity::Error,"invalid-element",objectId,
+                           QString("Structural object '%1' set '%2' contains nonexistent element %3.")
+                           .arg(objectId).arg(setName).arg(group->get(i)));
+                valid = false;
+            }
+        }
+    }
+    return valid;
+}
+
+void rejectInvalidReport(const RStructuralValidationReport &report)
+{
+    if (!report.hasErrors()) return;
+    QStringList messages;
+    for (const auto &diagnostic : report.getDiagnostics()) messages.push_back(diagnostic.message);
+    throw RError(RError::Type::InvalidInput,R_ERROR_REF,"%s",qPrintable(messages.join(" ")));
+}
+
+struct TieMatches
+{
+    std::vector<std::pair<uint,uint>> nodes;
+    RStructuralValidationReport report;
+};
+
+TieMatches matchTieNodes(const RModel &model, const RStructuralCoupling &coupling)
+{
+    TieMatches result;
+    auto error = [&](const QString &code, const QString &message)
+    {
+        result.report.add(RStructuralDiagnosticSeverity::Error,code,coupling.id,message);
+    };
+    const bool mastersValid = validateSetElements(model,coupling.masterSet,coupling.entityType,coupling.id,result.report);
+    const bool slavesValid = validateSetElements(model,coupling.slaveSet,coupling.entityType,coupling.id,result.report);
+    const auto masters = mastersValid
+        ? RStructuralInteractionSetup::resolveNamedSetNodes(model,coupling.masterSet,coupling.entityType) : std::vector<uint>();
+    const auto slaves = slavesValid
+        ? RStructuralInteractionSetup::resolveNamedSetNodes(model,coupling.slaveSet,coupling.entityType) : std::vector<uint>();
+    if (slavesValid && slaves.empty()) error("missing-slave-set","Coupling slave set is empty or does not exist.");
+    if (mastersValid && masters.empty()) error("missing-master-set","Tie master set is empty or does not exist.");
+    if (!std::isfinite(coupling.tolerance) || coupling.tolerance <= 0.0)
+    {
+        error("invalid-tolerance",QString("Tie '%1' matching tolerance must be finite and positive.").arg(coupling.id));
+        return result;
+    }
+    if (!mastersValid || !slavesValid) return result;
+    for (uint master : masters)
+    {
+        if (master >= model.getNNodes())
+            error("invalid-node",QString("Tie '%1' master node %2 does not exist.").arg(coupling.id).arg(master));
+    }
+    std::vector<uint> missing;
+    std::vector<uint> ambiguous;
+    for (uint slave : slaves)
+    {
+        if (slave >= model.getNNodes())
+        {
+            error("invalid-node",QString("Tie '%1' slave node %2 does not exist.").arg(coupling.id).arg(slave));
+            continue;
+        }
+        uint nearest = model.getNNodes();
+        double best = std::numeric_limits<double>::infinity();
+        double second = std::numeric_limits<double>::infinity();
+        for (uint master : masters)
+        {
+            if (master >= model.getNNodes()) continue;
+            const RNode &a = model.getNode(slave);
+            const RNode &b = model.getNode(master);
+            // Avoid overflow/underflow from squaring the requested tolerance.
+            const double distance = std::hypot(a.getX()-b.getX(),a.getY()-b.getY(),a.getZ()-b.getZ());
+            if (!std::isfinite(distance) || distance > coupling.tolerance) continue;
+            if (distance < best)
+            {
+                second = best;
+                best = distance;
+                nearest = master;
+            }
+            else if (distance < second) second = distance;
+        }
+        if (nearest >= model.getNNodes()) missing.push_back(slave);
+        // Relative rounding tolerance compares only candidates already inside
+        // the user tolerance; it never increases the matching radius.
+        else if (std::isfinite(second) && second-best <=
+                 32.0*std::numeric_limits<double>::epsilon()*std::max(best,second))
+            ambiguous.push_back(slave);
+        else result.nodes.push_back({slave,nearest});
+    }
+    for (uint slave : missing)
+        error("unmatched-tie-slave",QString("Tie '%1' slave node %2 has no master within tolerance; missing slave count: %3.")
+              .arg(coupling.id).arg(slave).arg(qulonglong(missing.size())));
+    for (uint slave : ambiguous)
+        error("ambiguous-tie-match",QString("Tie '%1' slave node %2 has equally near masters within numerical precision; ambiguous slave count: %3; missing slave count: %4.")
+              .arg(coupling.id).arg(slave).arg(qulonglong(ambiguous.size())).arg(qulonglong(missing.size())));
+    return result;
 }
 
 int matrixRank(std::vector<std::vector<double> > matrix, double tolerance = 1.0e-10)
@@ -263,6 +365,9 @@ std::vector<uint> RStructuralInteractionSetup::resolveNamedSetNodes(const RModel
         }
         for (uint i=0;i<group->size();i++)
         {
+            if (group->get(i) >= model.getNElements())
+                throw RError(RError::Type::InvalidInput,R_ERROR_REF,
+                             "Named set '%s' contains nonexistent element %u.",qPrintable(setName),group->get(i));
             const RElement &element = model.getElement(group->get(i));
             for (uint j=0;j<element.size();j++)
             {
@@ -293,6 +398,12 @@ std::vector<RLinearConstraint> RStructuralInteractionSetup::buildLinearConstrain
     std::vector<RLinearConstraint> equations = linearConstraints;
     for (const RStructuralCoupling &coupling : couplings)
     {
+        if (coupling.type != RStructuralCouplingType::Tie)
+        {
+            RStructuralValidationReport report;
+            validateSetElements(model,coupling.slaveSet,coupling.entityType,coupling.id,report);
+            rejectInvalidReport(report);
+        }
         const std::vector<RDofType> dofs = coupling.dofs.empty()
             ? std::vector<RDofType>{RDofType::UX,RDofType::UY,RDofType::UZ}
             : coupling.dofs;
@@ -366,26 +477,12 @@ std::vector<RLinearConstraint> RStructuralInteractionSetup::buildLinearConstrain
         }
         else
         {
-            const std::vector<uint> masters = resolveNamedSetNodes(model,coupling.masterSet,coupling.entityType);
-            const std::vector<uint> slaves = resolveNamedSetNodes(model,coupling.slaveSet,coupling.entityType);
-            const double tolerance2 = coupling.tolerance*coupling.tolerance;
-            for (uint slave : slaves)
+            const TieMatches matches = matchTieNodes(model,coupling);
+            rejectInvalidReport(matches.report);
+            for (const auto &match : matches.nodes)
             {
-                uint nearest = model.getNNodes();
-                double best = std::numeric_limits<double>::infinity();
-                for (uint master : masters)
-                {
-                    const double d2 = distanceSquared(model.getNode(slave),model.getNode(master));
-                    if (d2 < best)
-                    {
-                        best = d2;
-                        nearest = master;
-                    }
-                }
-                if (nearest >= model.getNNodes() || best > tolerance2)
-                {
-                    continue;
-                }
+                const uint slave = match.first;
+                const uint nearest = match.second;
                 for (RDofType dof : dofs)
                 {
                     RLinearConstraint equation;
@@ -446,23 +543,34 @@ RStructuralValidationReport RStructuralInteractionSetup::validate(const RModel &
         }
     }
 
+    RStructuralInteractionSetup buildable = *this;
+    buildable.couplings.clear();
     for (const RStructuralCoupling &coupling : couplings)
     {
         if ((coupling.type == RStructuralCouplingType::RigidBody || coupling.type == RStructuralCouplingType::Distributed) &&
             coupling.referenceNode >= model.getNNodes())
             report.add(RStructuralDiagnosticSeverity::Error,"invalid-reference-node",coupling.id,"Coupling reference node does not exist.");
-        if (resolveNamedSetNodes(model,coupling.slaveSet,coupling.entityType).empty())
-            report.add(RStructuralDiagnosticSeverity::Error,"missing-slave-set",coupling.id,"Coupling slave set is empty or does not exist.");
-        if (coupling.type == RStructuralCouplingType::Tie && resolveNamedSetNodes(model,coupling.masterSet,coupling.entityType).empty())
-            report.add(RStructuralDiagnosticSeverity::Error,"missing-master-set",coupling.id,"Tie master set is empty or does not exist.");
-        if (coupling.type == RStructuralCouplingType::Tie && coupling.tolerance <= 0.0)
-            report.add(RStructuralDiagnosticSeverity::Error,"invalid-tolerance",coupling.id,"Tie matching tolerance must be positive.");
+        if (coupling.type == RStructuralCouplingType::Tie)
+        {
+            const TieMatches matches = matchTieNodes(model,coupling);
+            for (const auto &diagnostic : matches.report.getDiagnostics())
+                report.add(diagnostic.severity,diagnostic.code,diagnostic.objectId,diagnostic.message);
+            if (!matches.report.hasErrors()) buildable.couplings.push_back(coupling);
+        }
+        else if (validateSetElements(model,coupling.slaveSet,coupling.entityType,coupling.id,report))
+        {
+            if (resolveNamedSetNodes(model,coupling.slaveSet,coupling.entityType).empty())
+                report.add(RStructuralDiagnosticSeverity::Error,"missing-slave-set",coupling.id,"Coupling slave set is empty or does not exist.");
+            buildable.couplings.push_back(coupling);
+        }
         for (RDofType dof : coupling.dofs)
             if (!isMechanicalDof(dof))
                 report.add(RStructuralDiagnosticSeverity::Error,"invalid-coupling-dof",coupling.id,"Coupling contains a non-mechanical DOF.");
     }
 
-    const std::vector<RLinearConstraint> equations = buildLinearConstraints(model);
+    // Invalid ties and corrupt sets have already supplied typed diagnostics.
+    // Exclude those couplings so all remaining validation checks still run.
+    const std::vector<RLinearConstraint> equations = buildable.buildLinearConstraints(model);
     std::map<std::pair<uint,int>,double> prescribed;
     std::vector<std::vector<double> > rigidRows;
     for (const RLinearConstraint &constraint : equations)
@@ -539,7 +647,8 @@ RStructuralValidationReport RStructuralInteractionSetup::validate(const RModel &
             if (target.nodeId >= model.getNNodes())
                 report.add(RStructuralDiagnosticSeverity::Error,"invalid-target",id,"Target node does not exist.");
         }
-        else if (RStructuralInteractionSetup::resolveNamedSetNodes(model,target.setName,target.entityType).empty())
+        else if (validateSetElements(model,target.setName,target.entityType,id,report) &&
+                 RStructuralInteractionSetup::resolveNamedSetNodes(model,target.setName,target.entityType).empty())
         {
             report.add(RStructuralDiagnosticSeverity::Error,"missing-set",id,"Named target set is empty or does not exist.");
         }

@@ -54,6 +54,9 @@ struct RStructuralPiezoSetup
     bool enabled = false;
     QString meshFingerprint;
     std::vector<RStructuralPiezoPort> ports;
+    //! Explicit mechanical-only TRUSS1 elements; LegacyTerminalVoltage only.
+    //! A nonempty list requires complete, disjoint active/passive classification.
+    std::vector<uint> passiveElementIds;
     //! Defaults to the v1.3.14-compatible terminal voltage formulation.
     RStructuralPiezoElectricalMode electricalMode = RStructuralPiezoElectricalMode::LegacyTerminalVoltage;
     //! Used only by NodalPotential; each node may have at most one condition.

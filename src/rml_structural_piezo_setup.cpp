@@ -78,6 +78,18 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
                      "Excessive structural piezo port count (%llu).",
                      static_cast<unsigned long long>(setup.ports.size()));
     }
+    if (setup.passiveElementIds.size() > maximumPiezoPortCount)
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Excessive structural piezo passive element count (%llu).",
+                     static_cast<unsigned long long>(setup.passiveElementIds.size()));
+    }
+    if (setup.electricalMode == RStructuralPiezoElectricalMode::NodalPotential &&
+        !setup.passiveElementIds.empty())
+    {
+        throw RError(RError::Type::Application,R_ERROR_REF,
+                     "Nodal-potential piezo setup cannot contain passive mechanical elements.");
+    }
     if (setup.nodalBoundaryConditions.size() > maximumPiezoBoundaryCount)
     {
         throw RError(RError::Type::Application,R_ERROR_REF,
@@ -127,6 +139,15 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
                          "Nodal-potential piezo setup cannot also specify legacy terminal voltage.");
+        }
+    }
+
+    for (const uint elementId : setup.passiveElementIds)
+    {
+        if (!elementIds.insert(elementId).second)
+        {
+            throw RError(RError::Type::Application,R_ERROR_REF,
+                         "Structural piezo active and passive element IDs must be unique and disjoint.");
         }
     }
 
@@ -186,26 +207,31 @@ void validateValues(const RStructuralPiezoSetup &setup, bool requireFingerprint)
 void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
 {
     std::map<uint,std::set<uint>> electricalGraph;
-    for (const RStructuralPiezoPort &port : setup.ports)
+    std::vector<uint> classifiedElementIds;
+    classifiedElementIds.reserve(setup.ports.size()+setup.passiveElementIds.size());
+    for (const RStructuralPiezoPort &port : setup.ports) classifiedElementIds.push_back(port.elementId);
+    classifiedElementIds.insert(classifiedElementIds.end(),setup.passiveElementIds.begin(),setup.passiveElementIds.end());
+    for (std::size_t index = 0; index < classifiedElementIds.size(); ++index)
     {
-        if (port.elementId >= model.getNElements())
+        const uint elementId = classifiedElementIds[index];
+        if (elementId >= model.getNElements())
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
-                         "Structural piezo port references an unknown element (%u).",
-                         port.elementId);
+                         "Structural piezo classification references an unknown element (%u).",
+                         elementId);
         }
-        const RElement &element = model.getElement(port.elementId);
+        const RElement &element = model.getElement(elementId);
         if (element.getType() != R_ELEMENT_TRUSS1)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
-                         "Structural piezo port element %u is not a TRUSS1 element.",
-                         port.elementId);
+                         "Structural piezo classified element %u is not a TRUSS1 element.",
+                         elementId);
         }
         if (element.size() != 2)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
-                         "Structural piezo port element %u does not have exactly two endpoints.",
-                         port.elementId);
+                         "Structural piezo classified element %u does not have exactly two endpoints.",
+                         elementId);
         }
 
         const uint firstNodeId = element.getNodeId(0);
@@ -214,8 +240,8 @@ void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
             firstNodeId == secondNodeId)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
-                         "Structural piezo port element %u has invalid or repeated endpoint IDs.",
-                         port.elementId);
+                         "Structural piezo classified element %u has invalid or repeated endpoint IDs.",
+                         elementId);
         }
 
         const RNode &firstNode = model.getNode(firstNodeId);
@@ -230,11 +256,28 @@ void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
             !std::isfinite(currentLength) || currentLength <= 0.0)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
-                         "Structural piezo port element %u has non-finite endpoint coordinates or zero length.",
-                         port.elementId);
+                         "Structural piezo classified element %u has non-finite endpoint coordinates or zero length.",
+                         elementId);
         }
-        electricalGraph[firstNodeId].insert(secondNodeId);
-        electricalGraph[secondNodeId].insert(firstNodeId);
+        if (index < setup.ports.size())
+        {
+            electricalGraph[firstNodeId].insert(secondNodeId);
+            electricalGraph[secondNodeId].insert(firstNodeId);
+        }
+    }
+
+    if (!setup.passiveElementIds.empty())
+    {
+        const std::set<uint> classified(classifiedElementIds.begin(),classifiedElementIds.end());
+        for (uint elementId = 0; elementId < model.getNElements(); ++elementId)
+        {
+            if (model.getElement(elementId).getType() == R_ELEMENT_TRUSS1 &&
+                classified.find(elementId) == classified.end())
+            {
+                throw RError(RError::Type::Application,R_ERROR_REF,
+                             "Structural piezo TRUSS1 element %u lacks an active or passive classification.",elementId);
+            }
+        }
     }
 
     if (setup.electricalMode != RStructuralPiezoElectricalMode::NodalPotential)
@@ -289,6 +332,24 @@ void validateTopology(const RStructuralPiezoSetup &setup, const RModel &model)
                          "Every connected piezo electrical component requires a prescribed potential gauge.");
         }
     }
+}
+
+QString computeLegacyFingerprint(const RModel &model, const RStructuralPiezoSetup &setup)
+{
+    const QString mesh = RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+    if (setup.passiveElementIds.empty()) return mesh;
+    QByteArray bytes("range-fea/piezo/legacy/mixed-classification/v1");
+    appendUtf8(bytes,mesh);
+    std::vector<uint> active;
+    for (const RStructuralPiezoPort &port : setup.ports) active.push_back(port.elementId);
+    std::sort(active.begin(),active.end());
+    appendUInt(bytes,uint(active.size()));
+    for (const uint elementId : active) appendUInt(bytes,elementId);
+    std::vector<uint> passive = setup.passiveElementIds;
+    std::sort(passive.begin(),passive.end());
+    appendUInt(bytes,uint(passive.size()));
+    for (const uint elementId : passive) appendUInt(bytes,elementId);
+    return digest(bytes);
 }
 
 QString computeExactNodalFingerprint(const RModel &model,
@@ -358,7 +419,7 @@ void RStructuralPiezoSetup::validate(const RModel &model) const
     {
         const QString expectedFingerprint = this->electricalMode == RStructuralPiezoElectricalMode::NodalPotential
             ? computeExactNodalFingerprint(model,this->ports)
-            : RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+            : computeLegacyFingerprint(model,*this);
         if (this->meshFingerprint != expectedFingerprint)
         {
             throw RError(RError::Type::Application,R_ERROR_REF,
@@ -374,6 +435,6 @@ void RStructuralPiezoSetup::bindToModel(const RModel &model)
     validateTopology(*this,model);
     this->meshFingerprint = this->electricalMode == RStructuralPiezoElectricalMode::NodalPotential
         ? computeExactNodalFingerprint(model,this->ports)
-        : RStructuralDynamicsRestartData::computeMeshFingerprint(model);
+        : computeLegacyFingerprint(model,*this);
     this->validate(model);
 }

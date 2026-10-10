@@ -65,6 +65,7 @@ bool bindingPublicationDefaultSetup(const RModel &model,const QByteArray &defaul
         || !setup.getStructuralControlSetup().controllerId.isEmpty() || !setup.getStructuralControlSetup().channelConditioning.empty()
         || !setup.getStructuralCableSetup().meshFingerprint.isEmpty() || !setup.getStructuralCableSetup().members.empty()
         || !setup.getStructuralPiezoSetup().meshFingerprint.isEmpty() || !setup.getStructuralPiezoSetup().ports.empty()
+        || !setup.getStructuralPiezoSetup().passiveElementIds.empty()
         || !setup.getStructuralPiezoSetup().nodalBoundaryConditions.empty() || !setup.getRadiationSetup().getViewFactorMatrixFile().isEmpty()
         || !setup.getStructuralThermalControlSetup().channels.empty() || !setup.getStructuralThermalControlSetup().sparseObservationNodeIds.empty()
         || !setup.getStructuralDynamicsSetup().getModalDampingRatios().empty() || !setup.getMeshSetup().getVariables().empty()) return false;

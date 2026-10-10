@@ -80,6 +80,11 @@ private slots:
     void readsVersion138WithoutPrescribedMotion();
     void structuralCatalogAndCouplings();
     void structuralValidation();
+    void tieCoverage_data();
+    void tieCoverage();
+    void tieFailurePreservesOtherDiagnostics_data();
+    void tieFailurePreservesOtherDiagnostics();
+    void distributedCouplingCompatibility();
     void dynamicsAndParallelValidation();
     void readsLegacyProblemSetup_data();
     void readsLegacyProblemSetup();
@@ -233,7 +238,7 @@ void TestProblemSetup::thermalControlSetupRoundTrip_data()
 void TestProblemSetup::thermalControlSetupRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.18"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.19"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 
@@ -512,7 +517,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.18"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.19"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;
@@ -1363,6 +1368,253 @@ void TestProblemSetup::structuralValidation()
     }
     QVERIFY(contradiction);
     QVERIFY(rigidWarning);
+}
+
+static RModel makeTieModel()
+{
+    RModel model;
+    // Coincident interface coordinates deliberately have different node IDs.
+    for (int i=0;i<2;i++)
+    {
+        model.addNode(RNode(0.0,0.0,0.0));
+        model.addNode(RNode(1.0,0.0,0.0));
+    }
+    RElement master(R_ELEMENT_TRUSS1); master.setNodeId(0,0); master.setNodeId(1,1);
+    RElement slave(R_ELEMENT_TRUSS1); slave.setNodeId(0,2); slave.setNodeId(1,3);
+    model.addElement(master); model.addElement(slave);
+    RLine masters; masters.setName("masters"); masters.add(0); model.addLine(masters);
+    RLine slaves; slaves.setName("slaves"); slaves.add(1); model.addLine(slaves);
+    RStructuralCoupling tie;
+    tie.id = "interface-tie";
+    tie.type = RStructuralCouplingType::Tie;
+    tie.masterSet = "masters";
+    tie.slaveSet = "slaves";
+    tie.entityType = R_ENTITY_GROUP_LINE;
+    tie.dofs = {RDofType::UX,RDofType::UY,RDofType::UZ};
+    model.getProblemSetup().getStructuralInteractionSetup().getCouplings().push_back(tie);
+    return model;
+}
+
+static uint findInteractionLine(const RModel &model, const QString &name)
+{
+    // addElement also creates automatic line groups; named interfaces do not
+    // have fixed positions in the model's line array.
+    for (uint i=0;i<model.getNLines();i++)
+        if (model.getLine(i).getName() == name) return i;
+    return model.getNLines();
+}
+
+void TestProblemSetup::tieCoverage_data()
+{
+    QTest::addColumn<QString>("scenario");
+    QTest::addColumn<double>("tolerance");
+    QTest::addColumn<QString>("errorCode");
+    QTest::addColumn<int>("missingCount");
+    QTest::newRow("unique-coincident-distinct-ids") << QString("aligned") << 1.e-8 << QString() << 0;
+    QTest::newRow("unique-nearest") << QString("nearest") << 2.0 << QString() << 0;
+    QTest::newRow("one-unmatched") << QString("one-missing") << 1.e-8 << QString("unmatched-tie-slave") << 1;
+    QTest::newRow("all-unmatched") << QString("all-missing") << 1.e-8 << QString("unmatched-tie-slave") << 2;
+    QTest::newRow("just-outside-tolerance") << QString("outside") << 1.e-8 << QString("unmatched-tie-slave") << 1;
+    QTest::newRow("equally-near-masters") << QString("equal") << 1.0 << QString("ambiguous-tie-match") << 0;
+    QTest::newRow("roundoff-equally-near-masters") << QString("roundoff") << 1.0 << QString("ambiguous-tie-match") << 0;
+    QTest::newRow("coincident-master-ambiguity") << QString("coincident-masters") << 1.e-8 << QString("ambiguous-tie-match") << 1;
+    QTest::newRow("nan-tolerance") << QString("aligned") << std::numeric_limits<double>::quiet_NaN() << QString("invalid-tolerance") << 0;
+    QTest::newRow("infinite-tolerance") << QString("aligned") << std::numeric_limits<double>::infinity() << QString("invalid-tolerance") << 0;
+    QTest::newRow("negative-infinite-tolerance") << QString("aligned") << -std::numeric_limits<double>::infinity() << QString("invalid-tolerance") << 0;
+    QTest::newRow("zero-tolerance") << QString("aligned") << 0.0 << QString("invalid-tolerance") << 0;
+    QTest::newRow("negative-tolerance") << QString("aligned") << -1.e-8 << QString("invalid-tolerance") << 0;
+    QTest::newRow("tiny-positive-tolerance") << QString("aligned") << std::numeric_limits<double>::min() << QString() << 0;
+    QTest::newRow("large-finite-tolerance") << QString("aligned") << std::numeric_limits<double>::max() << QString() << 0;
+    QTest::newRow("missing-master-set") << QString("missing-master-set") << 1.e-8 << QString("missing-master-set") << 2;
+    QTest::newRow("missing-slave-set") << QString("missing-slave-set") << 1.e-8 << QString("missing-slave-set") << 0;
+    QTest::newRow("invalid-slave-node") << QString("invalid-slave-node") << 1.e-8 << QString("invalid-node") << 0;
+    QTest::newRow("invalid-master-node") << QString("invalid-master-node") << 1.e-8 << QString("invalid-node") << 0;
+    QTest::newRow("invalid-master-element") << QString("invalid-master-element") << 1.e-8 << QString("invalid-element") << 0;
+    QTest::newRow("invalid-slave-element") << QString("invalid-slave-element") << 1.e-8 << QString("invalid-element") << 0;
+}
+
+void TestProblemSetup::tieCoverage()
+{
+    QFETCH(QString,scenario);
+    QFETCH(double,tolerance);
+    QFETCH(QString,errorCode);
+    QFETCH(int,missingCount);
+    RModel model = makeTieModel();
+    auto &setup = model.getProblemSetup().getStructuralInteractionSetup();
+    setup.getCouplings()[0].tolerance = tolerance;
+    if (scenario == "nearest") model.setNode(2,RNode(0.25,0.0,0.0));
+    if (scenario == "one-missing" || scenario == "all-missing") model.setNode(3,RNode(3.0,0.0,0.0));
+    if (scenario == "all-missing") model.setNode(2,RNode(2.0,0.0,0.0));
+    if (scenario == "outside") model.setNode(2,RNode(std::nextafter(tolerance,2.0*tolerance),0.0,0.0));
+    if (scenario == "equal") model.setNode(2,RNode(0.5,0.0,0.0));
+    if (scenario == "roundoff") model.setNode(2,RNode(std::nextafter(0.5,1.0),0.0,0.0));
+    if (scenario == "coincident-masters") model.setNode(1,RNode(0.0,0.0,0.0));
+    if (scenario == "missing-master-set") setup.getCouplings()[0].masterSet = "absent";
+    if (scenario == "missing-slave-set") setup.getCouplings()[0].slaveSet = "absent";
+    if (scenario == "invalid-slave-node") model.getElement(1).setNodeId(1,model.getNNodes());
+    if (scenario == "invalid-master-node") model.getElement(0).setNodeId(1,model.getNNodes());
+    if (scenario == "invalid-master-element" || scenario == "invalid-slave-element")
+    {
+        const QString setName = scenario == "invalid-master-element" ? "masters" : "slaves";
+        const uint lineId = findInteractionLine(model,setName);
+        QVERIFY(lineId < model.getNLines());
+        RLine &line = model.getLine(lineId);
+        QCOMPARE(line.getName(),setName);
+        const uint previousSize = line.size();
+        line.add(model.getNElements());
+        QCOMPARE(line.size(),previousSize+1);
+        QCOMPARE(line.get(previousSize),model.getNElements());
+    }
+
+    const auto report = setup.validate(model);
+    QCOMPARE(report.hasErrors(),!errorCode.isEmpty());
+    if (errorCode.isEmpty())
+    {
+        const auto equations = setup.buildLinearConstraints(model);
+        QCOMPARE(equations.size(),size_t(6));
+        for (size_t i=0;i<equations.size();i++)
+        {
+            QCOMPARE(equations[i].terms.size(),size_t(2));
+            QCOMPARE(equations[i].terms[0].reference.nodeId,uint(2+i/3));
+            QCOMPARE(equations[i].terms[1].reference.nodeId,uint(i/3));
+            QCOMPARE(equations[i].terms[0].coefficient,1.0);
+            QCOMPARE(equations[i].terms[1].coefficient,-1.0);
+        }
+        return;
+    }
+    bool found = false;
+    int unmatched = 0;
+    for (const auto &diagnostic : report.getDiagnostics())
+    {
+        if (diagnostic.code == errorCode)
+        {
+            found = true;
+            QCOMPARE(diagnostic.objectId,QString("interface-tie"));
+            QCOMPARE(diagnostic.severity,RStructuralDiagnosticSeverity::Error);
+            if (errorCode == "unmatched-tie-slave" || errorCode == "ambiguous-tie-match")
+            {
+                QVERIFY(diagnostic.message.contains("slave node 2") || diagnostic.message.contains("slave node 3"));
+                QVERIFY(diagnostic.message.contains(QString("missing slave count: %1").arg(missingCount)));
+            }
+        }
+        if (diagnostic.code == "unmatched-tie-slave") unmatched++;
+    }
+    QVERIFY(found);
+    if (missingCount > 0) QCOMPARE(unmatched,missingCount);
+    // Assignment must not publish constraints for the matched subset on failure.
+    std::vector<RLinearConstraint> published(1);
+    published[0].id = "previous-equations";
+    bool threw = false;
+    try { published = setup.buildLinearConstraints(model); }
+    catch (const RError &error)
+    {
+        threw = true;
+        QCOMPARE(error.getType(),RError::Type::InvalidInput);
+        QVERIFY(error.getMessage().contains("interface-tie") || errorCode.startsWith("missing-"));
+    }
+    QVERIFY(threw);
+    QCOMPARE(published.size(),size_t(1));
+    QCOMPARE(published[0].id,QString("previous-equations"));
+}
+
+void TestProblemSetup::tieFailurePreservesOtherDiagnostics_data()
+{
+    QTest::addColumn<QString>("corruptSet");
+    QTest::addColumn<int>("couplingType");
+    QTest::newRow("unmatched-tie") << QString() << int(RStructuralCouplingType::Tie);
+    QTest::newRow("tie-master-invalid-element") << QString("masters") << int(RStructuralCouplingType::Tie);
+    QTest::newRow("tie-slave-invalid-element") << QString("slaves") << int(RStructuralCouplingType::Tie);
+    QTest::newRow("rigid-slave-invalid-element") << QString("slaves") << int(RStructuralCouplingType::RigidBody);
+    QTest::newRow("distributed-slave-invalid-element") << QString("slaves") << int(RStructuralCouplingType::Distributed);
+}
+
+void TestProblemSetup::tieFailurePreservesOtherDiagnostics()
+{
+    QFETCH(QString,corruptSet);
+    QFETCH(int,couplingType);
+    RModel model = makeTieModel();
+    model.setNode(3,RNode(3.0,0.0,0.0));
+    auto &setup = model.getProblemSetup().getStructuralInteractionSetup();
+    setup.getCouplings()[0].type = RStructuralCouplingType(couplingType);
+    if (!corruptSet.isEmpty())
+    {
+        const uint lineId = findInteractionLine(model,corruptSet);
+        QVERIFY(lineId < model.getNLines());
+        RLine &line = model.getLine(lineId);
+        QCOMPARE(line.getName(),corruptSet);
+        const uint previousSize = line.size();
+        line.add(model.getNElements());
+        QCOMPARE(line.size(),previousSize+1);
+        QCOMPARE(line.get(previousSize),model.getNElements());
+    }
+    RLinearConstraint first;
+    first.id = "hold";
+    first.terms = {{{0,RDofType::UX},1.0}};
+    setup.getLinearConstraints().push_back(first);
+    first.id = "conflict";
+    first.rhs = 1.0;
+    setup.getLinearConstraints().push_back(first);
+    first.id = "invalid-node";
+    first.terms[0].reference.nodeId = model.getNNodes();
+    setup.getLinearConstraints().push_back(first);
+    RStructuralSensor sensor;
+    sensor.id = "invalid-sensor";
+    sensor.target.nodeId = model.getNNodes();
+    sensor.unit = "incorrect";
+    setup.getSensors().push_back(sensor);
+    if (!corruptSet.isEmpty())
+    {
+        sensor.id = "corrupt-set-sensor";
+        sensor.target.scope = RStructuralTargetScope::NamedSet;
+        sensor.target.setName = corruptSet;
+        sensor.target.entityType = R_ENTITY_GROUP_LINE;
+        sensor.unit = "m";
+        setup.getSensors().push_back(sensor);
+    }
+    const auto report = setup.validate(model);
+    QStringList codes;
+    for (const auto &diagnostic : report.getDiagnostics()) codes.push_back(diagnostic.code);
+    for (const auto &code : {"contradictory-equations","invalid-node","invalid-target","unit-mismatch"})
+        QVERIFY2(codes.contains(code),code);
+    QVERIFY(codes.contains(corruptSet.isEmpty() ? "unmatched-tie-slave" : "invalid-element"));
+    if (!corruptSet.isEmpty())
+    {
+        bool couplingDiagnostic = false;
+        bool sensorDiagnostic = false;
+        for (const auto &diagnostic : report.getDiagnostics())
+        {
+            if (diagnostic.code != "invalid-element") continue;
+            couplingDiagnostic |= diagnostic.objectId == "interface-tie";
+            sensorDiagnostic |= diagnostic.objectId == "corrupt-set-sensor";
+            QVERIFY(diagnostic.message.contains(corruptSet));
+            QVERIFY(diagnostic.message.contains(QString::number(model.getNElements())));
+        }
+        QVERIFY(couplingDiagnostic);
+        QVERIFY(sensorDiagnostic);
+        QVERIFY_EXCEPTION_THROWN(RStructuralInteractionSetup::resolveNamedSetNodes(model,corruptSet,R_ENTITY_GROUP_LINE),RError);
+    }
+    QVERIFY_EXCEPTION_THROWN(setup.buildLinearConstraints(model),RError);
+}
+
+void TestProblemSetup::distributedCouplingCompatibility()
+{
+    RModel model = makeInteractionModel();
+    auto &setup = model.getProblemSetup().getStructuralInteractionSetup();
+    RStructuralCoupling coupling;
+    coupling.id = "distributed";
+    coupling.type = RStructuralCouplingType::Distributed;
+    coupling.referenceNode = 0;
+    coupling.slaveSet = "coupled-edge";
+    coupling.entityType = R_ENTITY_GROUP_LINE;
+    coupling.dofs = {RDofType::UX};
+    coupling.tolerance = std::numeric_limits<double>::quiet_NaN();
+    setup.getCouplings().push_back(coupling);
+    QVERIFY(!setup.validate(model).hasErrors());
+    const auto equations = setup.buildLinearConstraints(model);
+    QCOMPARE(equations.size(),size_t(1));
+    QCOMPARE(equations[0].terms.size(),size_t(4));
+    QCOMPARE(equations[0].terms[0].coefficient,1.0);
+    for (size_t i=1;i<4;i++) QCOMPARE(equations[0].terms[i].coefficient,-1.0/3.0);
 }
 
 QTEST_APPLESS_MAIN(TestProblemSetup)
