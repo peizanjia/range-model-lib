@@ -15,6 +15,7 @@
 #include "rml_structural_thermal_control_setup.h"
 #include "rml_structural_truss_dynamics_setup.h"
 #include "rml_structural_truss_dynamics_restart_data.h"
+#include "rml_structural_native_control.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -56,6 +57,8 @@ class RProblemSetup
         RStructuralDynamicsRestartData structuralDynamicsRestartData;
         RStructuralTrussDynamicsSetup structuralTrussDynamicsSetup;
         RStructuralTrussDynamicsRestartData structuralTrussDynamicsRestartData;
+        RStructuralNativeControlSpec structuralNativeControlSpec;
+        RStructuralNativeControlState structuralNativeControlState;
         //! Solver execution policy.
         RParallelExecutionConfig parallelExecutionConfig;
 
@@ -161,6 +164,14 @@ class RProblemSetup
         const RStructuralTrussDynamicsRestartData &getStructuralTrussDynamicsRestartData() const;
         RStructuralTrussDynamicsRestartData &getStructuralTrussDynamicsRestartData();
         void setStructuralTrussDynamicsRestartData(const RStructuralTrussDynamicsRestartData &data);
+
+        const RStructuralNativeControlSpec &getStructuralNativeControlSpec() const;
+        RStructuralNativeControlSpec &getStructuralNativeControlSpec();
+        void setStructuralNativeControlSpec(const RStructuralNativeControlSpec &spec);
+
+        const RStructuralNativeControlState &getStructuralNativeControlState() const;
+        RStructuralNativeControlState &getStructuralNativeControlState();
+        void setStructuralNativeControlState(const RStructuralNativeControlState &state);
 
         const RParallelExecutionConfig &getParallelExecutionConfig() const;
         RParallelExecutionConfig &getParallelExecutionConfig();

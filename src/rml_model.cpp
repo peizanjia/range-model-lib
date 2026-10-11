@@ -61,7 +61,9 @@ bool bindingPublicationDefaultSetup(const RModel &model,const QByteArray &defaul
     const RStructuralDynamicsRestartData defaultRestart;
     if (fields(setup.getStructuralDynamicsRestartData())!=fields(defaultRestart)) return false;
     if (setup.getStructuralTrussDynamicsSetup().hasNonDefaultData()
-        || setup.getStructuralTrussDynamicsRestartData().hasNonDefaultData()) return false;
+        || setup.getStructuralTrussDynamicsRestartData().hasNonDefaultData()
+        || setup.getStructuralNativeControlSpec().hasNonDefaultData()
+        || setup.getStructuralNativeControlState().hasNonDefaultData()) return false;
     const auto &interactions=setup.getStructuralInteractionSetup();
     if (!interactions.getLinearConstraints().empty() || !interactions.getCouplings().empty()
         || !interactions.getSensors().empty() || !interactions.getActuators().empty() || !interactions.getPrescribedMotions().empty()
@@ -809,6 +811,12 @@ void RModel::readInPlace(const QString &fileName)
         }
     }
 
+    if (this->problemSetup.getStructuralNativeControlSpec().source == RStructuralNativeControlSource::LocalV3)
+    {
+        this->problemSetup.getStructuralNativeControlSpec().validate(*this);
+        this->problemSetup.getStructuralNativeControlState().validate(this->problemSetup.getStructuralNativeControlSpec());
+        this->problemSetup.getStructuralTrussDynamicsSetup().validate(*this);
+    }
     RModelProblemTypeMask modelProblemType = this->checkMesh();
     if (modelProblemType != R_MODEL_PROBLEM_NONE)
     {
@@ -8397,7 +8405,9 @@ void RModel::writeAscii(const QString &fileName) const
     // Native source fingerprints use exact binary64 geometry, material and
     // boundary values; the complete ASCII model must preserve those inputs.
     if (this->problemSetup.getStructuralTrussDynamicsSetup().hasNonDefaultData()
-        || this->problemSetup.getStructuralTrussDynamicsRestartData().hasNonDefaultData())
+        || this->problemSetup.getStructuralTrussDynamicsRestartData().hasNonDefaultData()
+        || this->problemSetup.getStructuralNativeControlSpec().hasNonDefaultData()
+        || this->problemSetup.getStructuralNativeControlState().hasNonDefaultData())
         modelFile.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
 
     uint64_t nsteps = this->getNNodes()

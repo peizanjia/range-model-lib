@@ -49,6 +49,7 @@
 #include "rml_structural_thermal_control_setup.h"
 #include "rml_structural_truss_dynamics_setup.h"
 #include "rml_structural_truss_dynamics_restart_data.h"
+#include "rml_structural_native_control.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -834,6 +835,16 @@ class RFileIO
         static void readBinary(RFile &inFile, RStructuralThermalControlSetup &setup);
         static void writeAscii(RSaveFile &outFile, const RStructuralThermalControlSetup &setup, bool addNewLine = true);
         static void writeBinary(RSaveFile &outFile, const RStructuralThermalControlSetup &setup);
+
+        static void readAscii(RFile &inFile, RStructuralNativeControlSpec &data);
+        static void readBinary(RFile &inFile, RStructuralNativeControlSpec &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralNativeControlSpec &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralNativeControlSpec &data);
+
+        static void readAscii(RFile &inFile, RStructuralNativeControlState &data);
+        static void readBinary(RFile &inFile, RStructuralNativeControlState &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralNativeControlState &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralNativeControlState &data);
 
         static void readAscii(RFile &inFile, RStructuralTrussDynamicsSetup &data);
         static void readBinary(RFile &inFile, RStructuralTrussDynamicsSetup &data);

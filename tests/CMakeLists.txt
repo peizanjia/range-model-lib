@@ -29,6 +29,7 @@ set(range_model_lib_tests
     tst_structural_product_profile
     tst_structural_cable_setup
     tst_structural_piezo_setup
+    tst_structural_native_control_model
     tst_structural_truss_dynamics_setup
     tst_element_group_io
     tst_model_physical_ids
@@ -41,7 +42,12 @@ foreach(test_name IN LISTS range_model_lib_tests)
             range-model-lib
             Qt6::Test
     )
-    add_test(NAME ${test_name} COMMAND ${test_name})
+    if(test_name STREQUAL "tst_structural_native_control_model")
+        add_test(NAME ${test_name} COMMAND ${test_name}
+            -o "${CMAKE_CURRENT_BINARY_DIR}/native-control-model-detail.txt,txt" -o -,txt)
+    else()
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endif()
     if(WIN32)
         set_tests_properties(${test_name} PROPERTIES
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

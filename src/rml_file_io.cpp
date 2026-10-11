@@ -4635,6 +4635,22 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         candidate.structuralTrussDynamicsSetup = RStructuralTrussDynamicsSetup();
         candidate.structuralTrussDynamicsRestartData.clear();
     }
+    if (inFile.getVersion() > RVersion(1,3,20))
+    {
+        RFileIO::readAscii(inFile,candidate.structuralNativeControlSpec);
+        RFileIO::readAscii(inFile,candidate.structuralNativeControlState);
+        candidate.structuralNativeControlState.validate(candidate.structuralNativeControlSpec);
+        if (candidate.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
+            && (!candidate.structuralTrussDynamicsSetup.enabled || !candidate.structuralTrussDynamicsSetup.heldCommands.empty()))
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Local native control requires enabled trusses and an empty frozen schedule.");
+        if (candidate.structuralNativeControlState.available && candidate.structuralNativeControlState.sourceFingerprint != candidate.structuralTrussDynamicsSetup.sourceFingerprint)
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Native control state source differs from its truss source.");
+    }
+    else
+    {
+        candidate.structuralNativeControlSpec = RStructuralNativeControlSpec();
+        candidate.structuralNativeControlState.clear();
+    }
     problemSetup = candidate;
 }
 
@@ -4706,11 +4722,37 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         candidate.structuralTrussDynamicsSetup = RStructuralTrussDynamicsSetup();
         candidate.structuralTrussDynamicsRestartData.clear();
     }
+    if (inFile.getVersion() > RVersion(1,3,20))
+    {
+        RFileIO::readBinary(inFile,candidate.structuralNativeControlSpec);
+        RFileIO::readBinary(inFile,candidate.structuralNativeControlState);
+        candidate.structuralNativeControlState.validate(candidate.structuralNativeControlSpec);
+        if (candidate.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
+            && (!candidate.structuralTrussDynamicsSetup.enabled || !candidate.structuralTrussDynamicsSetup.heldCommands.empty()))
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Local native control requires enabled trusses and an empty frozen schedule.");
+        if (candidate.structuralNativeControlState.available && candidate.structuralNativeControlState.sourceFingerprint != candidate.structuralTrussDynamicsSetup.sourceFingerprint)
+            throw RError(RError::Type::ReadFile,R_ERROR_REF,"Native control state source differs from its truss source.");
+    }
+    else
+    {
+        candidate.structuralNativeControlSpec = RStructuralNativeControlSpec();
+        candidate.structuralNativeControlState.clear();
+    }
     problemSetup = candidate;
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
 {
+    problemSetup.structuralNativeControlSpec.validate();
+    problemSetup.structuralNativeControlState.validate(problemSetup.structuralNativeControlSpec);
+    if (problemSetup.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
+        && (!problemSetup.structuralTrussDynamicsSetup.enabled || !problemSetup.structuralTrussDynamicsSetup.heldCommands.empty()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Local native control requires enabled trusses and an empty frozen schedule.");
+    if (outFile.getVersion() <= RVersion(1,3,20)
+        && (problemSetup.structuralNativeControlSpec.hasNonDefaultData() || problemSetup.structuralNativeControlState.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control v3 requires model format 1.3.21.");
+    if (problemSetup.structuralNativeControlState.available && problemSetup.structuralNativeControlState.sourceFingerprint != problemSetup.structuralTrussDynamicsSetup.sourceFingerprint)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control state source differs from its truss source.");
     problemSetup.structuralTrussDynamicsSetup.validate();
     problemSetup.structuralTrussDynamicsRestartData.validate();
     if (outFile.getVersion() <= RVersion(1,3,19)
@@ -4775,10 +4817,24 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralTrussDynamicsSetup,addNewLine);
     if (!addNewLine && outFile.getVersion() > RVersion(1,3,19)) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralTrussDynamicsRestartData,addNewLine);
+    if (!addNewLine && outFile.getVersion() > RVersion(1,3,20)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralNativeControlSpec,addNewLine);
+    if (!addNewLine && outFile.getVersion() > RVersion(1,3,20)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralNativeControlState,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
 {
+    problemSetup.structuralNativeControlSpec.validate();
+    problemSetup.structuralNativeControlState.validate(problemSetup.structuralNativeControlSpec);
+    if (problemSetup.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
+        && (!problemSetup.structuralTrussDynamicsSetup.enabled || !problemSetup.structuralTrussDynamicsSetup.heldCommands.empty()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Local native control requires enabled trusses and an empty frozen schedule.");
+    if (outFile.getVersion() <= RVersion(1,3,20)
+        && (problemSetup.structuralNativeControlSpec.hasNonDefaultData() || problemSetup.structuralNativeControlState.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control v3 requires model format 1.3.21.");
+    if (problemSetup.structuralNativeControlState.available && problemSetup.structuralNativeControlState.sourceFingerprint != problemSetup.structuralTrussDynamicsSetup.sourceFingerprint)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control state source differs from its truss source.");
     problemSetup.structuralTrussDynamicsSetup.validate();
     problemSetup.structuralTrussDynamicsRestartData.validate();
     if (outFile.getVersion() <= RVersion(1,3,19)
@@ -4801,6 +4857,8 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralThermalControlSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralTrussDynamicsSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralTrussDynamicsRestartData);
+    RFileIO::writeBinary(outFile,problemSetup.structuralNativeControlSpec);
+    RFileIO::writeBinary(outFile,problemSetup.structuralNativeControlState);
 }
 
 
@@ -7595,4 +7653,183 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralTrussDynamicsRest
     write(data.cumulativeSupportWork);
     write(data.cumulativeElectricalWork);
     write(data.cumulativeRestLengthWork);
+}
+
+
+/*********************************************************************
+ * Version 1.3.21 local native control persistence                    *
+ *********************************************************************/
+namespace {
+constexpr uint nativeCatalogBound=4096;
+constexpr uint nativeEnvelopeBound=16u*1024u*1024u;
+void nativeReadAscii(RFile &file, uint &value)
+{
+    const QString token=trussReadAsciiToken(file); bool ok=false; value=token.toUInt(&ok);
+    if(!ok || token!=QString::number(value)) trussReadError();
+}
+void nativeReadAscii(RFile &file, quint64 &value)
+{
+    const QString token=trussReadAsciiToken(file); bool ok=false; value=token.toULongLong(&ok);
+    if(!ok || token!=QString::number(value)) trussReadError();
+}
+template<class T> void nativeReadAscii(RFile &file,T &value) { trussReadAscii(file,value); }
+void nativeReadAscii(RFile &file,QByteArray &value)
+{
+    QTextStream &stream=file.getTextStream(); stream.skipWhiteSpace(); QChar c; stream >> c;
+    if(stream.status()!=QTextStream::Ok || c!='"') trussReadError();
+    QByteArray hex;
+    while(true) {
+        stream >> c; if(stream.status()!=QTextStream::Ok) trussReadError();
+        if(c=='"') break;
+        if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')) || hex.size()>=qint64(nativeEnvelopeBound)*2) trussReadError();
+        hex.append(char(c.unicode()));
+    }
+    if(hex.size()%2) trussReadError(); value=QByteArray::fromHex(hex);
+}
+template<class T> void nativeReadBinary(RFile &file,T &value) { trussReadBinary(file,value); }
+void nativeReadBinary(RFile &file,QByteArray &value)
+{
+    uint size=0; trussReadBinary(file,size);
+    if(size>nativeEnvelopeBound || file.bytesAvailable()<qint64(size)) trussReadError();
+    value=file.read(size); if(value.size()!=qint64(size) || file.error()!=RFile::NoError) trussReadError();
+}
+void nativeWriteAscii(RSaveFile &file,quint64 value,bool newline) { RFileIO::writeAscii(file,QString::number(value),newline); }
+template<class T> void nativeWriteAscii(RSaveFile &file,const T &value,bool newline) { trussWriteAsciiValue(file,value,newline); }
+void nativeWriteBinary(RSaveFile &file,quint64 value)
+{
+    if(file.write(reinterpret_cast<const char*>(&value),sizeof(value))!=qint64(sizeof(value)) || file.error()!=RFile::NoError)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Failed to write native control counter.");
+}
+template<class T> void nativeWriteBinary(RSaveFile &file,const T &value) { trussWriteBinaryValue(file,value); }
+// Enum values are checked as full-width integers before casting; otherwise
+// 256 could alias a valid quint8 catalog value.
+template<class IO,class Enum> void nativeEnum(IO &io,Enum &value,bool reading,uint mask)
+{
+    uint raw=uint(value); io(raw);
+    if(reading) { if(raw>=32 || !(mask&(1u<<raw))) trussReadError(); value=static_cast<Enum>(raw); }
+}
+template<class IO,class T,class Visit> void nativeVector(IO &io,std::vector<T> &values,bool reading,Visit visit)
+{
+    uint size=uint(values.size()); io(size); if(size>nativeCatalogBound) trussReadError();
+    if(reading) values.resize(size); for(auto &value:values) visit(value);
+}
+template<class IO> void nativeLimit(IO &io,double &value,bool reading,double absent)
+{
+    bool present=std::isfinite(value); io(present);
+    if(present) io(value); else if(reading) value=absent;
+}
+template<class IO> void nativeSpecIO(IO &io,RStructuralNativeControlSpec &s,bool reading)
+{
+    io(s.schemaVersion); nativeEnum(io,s.source,reading,3);
+    io(s.providerId); io(s.providerRevision); io(s.implementationSha256); io(s.dependencyEnvironmentManifest); io(s.dependencyEnvironmentSha256);
+    io(s.controlEveryFESteps); io(s.samplePhase); io(s.deterministicSeed);
+    nativeVector(io,s.sensors,reading,[&](auto &v) {
+        io(v.sensorId); nativeEnum(io,v.quantity,reading,127); io(v.physicalNodeId); io(v.physicalMemberId); io(v.portId); io(v.axis);
+    });
+    nativeVector(io,s.actions,reading,[&](auto &v) {
+        io(v.actionId); nativeEnum(io,v.quantity,reading,51); io(v.physicalNodeId); io(v.physicalMemberId); io(v.portId); io(v.axis);
+        nativeLimit(io,v.minimum,reading,-std::numeric_limits<double>::infinity());
+        nativeLimit(io,v.maximum,reading,std::numeric_limits<double>::infinity());
+        nativeLimit(io,v.rateLimit,reading,std::numeric_limits<double>::infinity());
+        io(v.initialCommand); io(v.delayTicks); io(v.holdTicks); io(v.noiseAmplitude);
+    });
+    nativeVector(io,s.piLoops,reading,[&](auto &v) { io(v.actionId); io(v.sensorId); io(v.referenceValue); io(v.proportionalGain); io(v.integralGain); io(v.bias); io(v.initialIntegral); });
+}
+template<class IO> void nativeStateIO(IO &io,RStructuralNativeControlState &s,bool reading)
+{
+    io(s.available); io(s.schemaVersion); io(s.sourceFingerprint); io(s.providerRevision); io(s.completedFE); io(s.completedControlTicks); io(s.fePhase); io(s.samplePhase);
+    io(s.lastControllerInputState); io(s.controllerState);
+    auto &f=s.lastFrame; io(f.completedFE); io(f.controlTick); io(f.fePhase); io(f.samplePhase); io(f.sampleTime); io(f.nextFETime); io(f.nextControlTime); io(f.physicalDt);
+    nativeVector(io,f.samples,reading,[&](auto &v) { io(v.sensorId); nativeEnum(io,v.quantity,reading,127); io(v.value); });
+    nativeVector(io,s.lastActions,reading,[&](auto &v) { io(v.actionId); nativeEnum(io,v.quantity,reading,51); io(v.previousApplied); io(v.requested); io(v.conditioned); io(v.applied); io(v.limitFlags); });
+    nativeVector(io,s.heldValues,reading,[&](double &v) { io(v); });
+    nativeVector(io,s.lastAppliedValues,reading,[&](double &v) { io(v); });
+}
+template<class T> bool nativeWriteVersion(RSaveFile &file,const T &data)
+{
+    data.validate();
+    if(file.getVersion()>RVersion(1,3,20)) return true;
+    if(data.hasNonDefaultData()) throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control v3 requires model format 1.3.21.");
+    return false;
+}
+}
+
+void RFileIO::readAscii(RFile &inFile,RStructuralNativeControlSpec &data)
+{
+    RStructuralNativeControlSpec candidate;
+    if(inFile.getVersion()>RVersion(1,3,20)) {
+        auto read=[&](auto &value) { nativeReadAscii(inFile,value); };
+        nativeSpecIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+
+void RFileIO::readBinary(RFile &inFile,RStructuralNativeControlSpec &data)
+{
+    RStructuralNativeControlSpec candidate;
+    if(inFile.getVersion()>RVersion(1,3,20)) {
+        auto read=[&](auto &value) { nativeReadBinary(inFile,value); };
+        nativeSpecIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile,const RStructuralNativeControlSpec &data,bool addNewLine)
+{
+    if(!nativeWriteVersion(outFile,data)) return;
+    RStructuralNativeControlSpec candidate=data;
+    const int precision=outFile.getTextStream().realNumberPrecision();
+    outFile.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
+    auto write=[&](auto &value) { nativeWriteAscii(outFile,value,addNewLine); if(!addNewLine) RFileIO::writeAscii(outFile,' ',false); };
+    try { nativeSpecIO(write,candidate,false); }
+    catch(...) { outFile.getTextStream().setRealNumberPrecision(precision); throw; }
+    outFile.getTextStream().setRealNumberPrecision(precision);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile,const RStructuralNativeControlSpec &data)
+{
+    if(!nativeWriteVersion(outFile,data)) return;
+    RStructuralNativeControlSpec candidate=data;
+    auto write=[&](auto &value) { nativeWriteBinary(outFile,value); };
+    nativeSpecIO(write,candidate,false);
+}
+
+void RFileIO::readAscii(RFile &inFile,RStructuralNativeControlState &data)
+{
+    RStructuralNativeControlState candidate;
+    if(inFile.getVersion()>RVersion(1,3,20)) {
+        auto read=[&](auto &value) { nativeReadAscii(inFile,value); };
+        nativeStateIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+
+void RFileIO::readBinary(RFile &inFile,RStructuralNativeControlState &data)
+{
+    RStructuralNativeControlState candidate;
+    if(inFile.getVersion()>RVersion(1,3,20)) {
+        auto read=[&](auto &value) { nativeReadBinary(inFile,value); };
+        nativeStateIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile,const RStructuralNativeControlState &data,bool addNewLine)
+{
+    if(!nativeWriteVersion(outFile,data)) return;
+    RStructuralNativeControlState candidate=data;
+    const int precision=outFile.getTextStream().realNumberPrecision();
+    outFile.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
+    auto write=[&](auto &value) { nativeWriteAscii(outFile,value,addNewLine); if(!addNewLine) RFileIO::writeAscii(outFile,' ',false); };
+    try { nativeStateIO(write,candidate,false); }
+    catch(...) { outFile.getTextStream().setRealNumberPrecision(precision); throw; }
+    outFile.getTextStream().setRealNumberPrecision(precision);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile,const RStructuralNativeControlState &data)
+{
+    if(!nativeWriteVersion(outFile,data)) return;
+    RStructuralNativeControlState candidate=data;
+    auto write=[&](auto &value) { nativeWriteBinary(outFile,value); };
+    nativeStateIO(write,candidate,false);
 }

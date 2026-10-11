@@ -339,6 +339,7 @@ public:
         require(value.size() == 3,"Invalid native truss source direction dimensions.");
         for (uint i = 0; i < 3; ++i) real(value[i]);
     }
+    void blob(const QByteArray &bytes) { integer(quint64(bytes.size())); hash.addData(bytes); }
     QString digest() { return QString::fromLatin1(hash.result().toHex()); }
 };
 
@@ -576,6 +577,7 @@ void RStructuralTrussDynamicsSetup::validate(const RModel &model) const
 {
     validate();
     validateTopology(*this,model);
+    model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
     if (!sourceFingerprint.isEmpty())
         require(sourceFingerprint == computeSourceFingerprint(model),"Native truss setup is bound to a changed source model.");
 }
@@ -585,6 +587,7 @@ void RStructuralTrussDynamicsSetup::bindToModel(const RModel &model)
     RStructuralTrussDynamicsSetup candidate = *this;
     validateValues(candidate,false);
     validateTopology(candidate,model);
+    model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
     candidate.sourceFingerprint = candidate.computeSourceFingerprint(model);
     candidate.validate();
     *this = std::move(candidate);
@@ -601,8 +604,12 @@ QString RStructuralTrussDynamicsSetup::computeSourceFingerprint(const RModel &mo
 {
     validateValues(*this,false);
     validateTopology(*this,model);
+    model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
     SourceWriter writer;
-    writer.text(QStringLiteral("range-fea/native-mixed-truss/source/v1/binary64"));
+    const auto &control = model.getProblemSetup().getStructuralNativeControlSpec();
+    const bool local = control.source == RStructuralNativeControlSource::LocalV3;
+    writer.text(local ? QStringLiteral("range-fea/native-mixed-truss/source/v3/binary64")
+                      : QStringLiteral("range-fea/native-mixed-truss/source/v1/binary64"));
     writer.real(293.15);
     writer.entries(model.getNNodes());
     for (uint i = 0; i < model.getNNodes(); ++i)
@@ -646,5 +653,9 @@ QString RStructuralTrussDynamicsSetup::computeSourceFingerprint(const RModel &mo
     writer.real(model.getTimeSolver().getInputStartTime());
     size_t taskCount = 0;
     writeTask(writer,model.getProblemTaskTree(),0,taskCount);
+    if (local) {
+        const QByteArray identity=control.identityBytes();
+        writer.blob(identity);
+    }
     return writer.digest();
 }

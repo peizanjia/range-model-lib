@@ -21,6 +21,8 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
         this->structuralTrussDynamicsSetup = pProblemSetup->structuralTrussDynamicsSetup;
         this->structuralTrussDynamicsRestartData = pProblemSetup->structuralTrussDynamicsRestartData;
+        this->structuralNativeControlSpec = pProblemSetup->structuralNativeControlSpec;
+        this->structuralNativeControlState = pProblemSetup->structuralNativeControlState;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
 }
@@ -277,6 +279,13 @@ void RProblemSetup::setStructuralTrussDynamicsRestartData(const RStructuralTruss
     data.validate();
     this->structuralTrussDynamicsRestartData = data;
 }
+
+const RStructuralNativeControlSpec &RProblemSetup::getStructuralNativeControlSpec() const { return structuralNativeControlSpec; }
+RStructuralNativeControlSpec &RProblemSetup::getStructuralNativeControlSpec() { return structuralNativeControlSpec; }
+void RProblemSetup::setStructuralNativeControlSpec(const RStructuralNativeControlSpec &spec) { spec.validate(); structuralNativeControlSpec=spec; }
+const RStructuralNativeControlState &RProblemSetup::getStructuralNativeControlState() const { return structuralNativeControlState; }
+RStructuralNativeControlState &RProblemSetup::getStructuralNativeControlState() { return structuralNativeControlState; }
+void RProblemSetup::setStructuralNativeControlState(const RStructuralNativeControlState &state) { state.validate(); structuralNativeControlState=state; }
 
 const RParallelExecutionConfig &RProblemSetup::getParallelExecutionConfig() const
 {
