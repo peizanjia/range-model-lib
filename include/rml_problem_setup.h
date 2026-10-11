@@ -13,6 +13,8 @@
 #include "rml_structural_cable_setup.h"
 #include "rml_structural_piezo_setup.h"
 #include "rml_structural_thermal_control_setup.h"
+#include "rml_structural_truss_dynamics_setup.h"
+#include "rml_structural_truss_dynamics_restart_data.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -52,6 +54,8 @@ class RProblemSetup
         RStructuralThermalControlSetup structuralThermalControlSetup;
         //! Last accepted second-order transient state for disk restart.
         RStructuralDynamicsRestartData structuralDynamicsRestartData;
+        RStructuralTrussDynamicsSetup structuralTrussDynamicsSetup;
+        RStructuralTrussDynamicsRestartData structuralTrussDynamicsRestartData;
         //! Solver execution policy.
         RParallelExecutionConfig parallelExecutionConfig;
 
@@ -149,6 +153,14 @@ class RProblemSetup
         const RStructuralDynamicsRestartData &getStructuralDynamicsRestartData() const;
         RStructuralDynamicsRestartData &getStructuralDynamicsRestartData();
         void setStructuralDynamicsRestartData(const RStructuralDynamicsRestartData &data);
+
+        const RStructuralTrussDynamicsSetup &getStructuralTrussDynamicsSetup() const;
+        RStructuralTrussDynamicsSetup &getStructuralTrussDynamicsSetup();
+        void setStructuralTrussDynamicsSetup(const RStructuralTrussDynamicsSetup &setup);
+
+        const RStructuralTrussDynamicsRestartData &getStructuralTrussDynamicsRestartData() const;
+        RStructuralTrussDynamicsRestartData &getStructuralTrussDynamicsRestartData();
+        void setStructuralTrussDynamicsRestartData(const RStructuralTrussDynamicsRestartData &data);
 
         const RParallelExecutionConfig &getParallelExecutionConfig() const;
         RParallelExecutionConfig &getParallelExecutionConfig();

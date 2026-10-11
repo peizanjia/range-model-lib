@@ -1144,8 +1144,8 @@ double RElement::interpolate(const std::vector<RNode> &nodes,
             double bt = b1 + b2;
             if (bt != 0.0)
             {
-                ratios[0] = b1/bt;
-                ratios[1] = b2/bt;
+                ratios[0] = b2/bt;
+                ratios[1] = b1/bt;
             }
             break;
         }

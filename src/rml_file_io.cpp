@@ -309,7 +309,14 @@ void RFileIO::readBinary(RFile &inFile, double &dValue)
 
 void RFileIO::writeAscii(RSaveFile &outFile, const double &dValue, bool addNewLine)
 {
-    if (!addNewLine)
+    // QTextStream formats negative zero as zero. Native source/restart identity
+    // preserves binary64 signs, so retain this bit in the versioned model text.
+    if (outFile.getVersion() > RVersion(1,3,19) && dValue == 0.0 && std::signbit(dValue))
+    {
+        outFile.getTextStream() << "-0";
+        if (addNewLine) outFile.getTextStream() << RConstants::endl;
+    }
+    else if (!addNewLine)
     {
         outFile.getTextStream() << dValue;
     }
@@ -4562,124 +4569,154 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemTaskItem &problemTas
 
 void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
 {
-    RFileIO::readAscii(inFile,problemSetup.restart);
-    RFileIO::readAscii(inFile,problemSetup.radiationSetup);
-    RFileIO::readAscii(inFile,problemSetup.modalSetup);
+    RProblemSetup candidate(problemSetup);
+    RFileIO::readAscii(inFile,candidate.restart);
+    RFileIO::readAscii(inFile,candidate.radiationSetup);
+    RFileIO::readAscii(inFile,candidate.modalSetup);
     if (inFile.getVersion() > RVersion(0,3,4))
     {
-        RFileIO::readAscii(inFile,problemSetup.meshSetup);
+        RFileIO::readAscii(inFile,candidate.meshSetup);
     }
     if (inFile.getVersion() > RVersion(1,2,0))
     {
-        RFileIO::readAscii(inFile,problemSetup.acousticSetup);
+        RFileIO::readAscii(inFile,candidate.acousticSetup);
     }
     if (inFile.getVersion() > RVersion(1,3,1))
     {
         int massMatrixType;
         RFileIO::readAscii(inFile,massMatrixType);
-        problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
+        candidate.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
     }
     if (inFile.getVersion() > RVersion(1,3,4))
     {
-        RFileIO::readAscii(inFile,problemSetup.structuralInteractionSetup);
+        RFileIO::readAscii(inFile,candidate.structuralInteractionSetup);
     }
     if (inFile.getVersion() > RVersion(1,3,5))
     {
-        RFileIO::readAscii(inFile,problemSetup.structuralDynamicsSetup);
-        RFileIO::readAscii(inFile,problemSetup.parallelExecutionConfig);
+        RFileIO::readAscii(inFile,candidate.structuralDynamicsSetup);
+        RFileIO::readAscii(inFile,candidate.parallelExecutionConfig);
     }
     else
     {
-        problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
-        problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
+        candidate.structuralDynamicsSetup = RStructuralDynamicsSetup();
+        candidate.parallelExecutionConfig = RParallelExecutionConfig();
     }
     if (inFile.getVersion() > RVersion(1,3,6))
     {
-        RFileIO::readAscii(inFile,problemSetup.structuralDynamicsRestartData);
+        RFileIO::readAscii(inFile,candidate.structuralDynamicsRestartData);
     }
     else
     {
-        problemSetup.structuralDynamicsRestartData.clear();
+        candidate.structuralDynamicsRestartData.clear();
     }
     if (inFile.getVersion() > RVersion(1,3,10))
-        RFileIO::readAscii(inFile,problemSetup.structuralControlSetup);
+        RFileIO::readAscii(inFile,candidate.structuralControlSetup);
     else
-        problemSetup.structuralControlSetup = RStructuralControlSetup();
+        candidate.structuralControlSetup = RStructuralControlSetup();
     if (inFile.getVersion() > RVersion(1,3,12))
-        RFileIO::readAscii(inFile,problemSetup.structuralCableSetup);
+        RFileIO::readAscii(inFile,candidate.structuralCableSetup);
     else
-        problemSetup.structuralCableSetup = RStructuralCableSetup();
+        candidate.structuralCableSetup = RStructuralCableSetup();
     if (inFile.getVersion() > RVersion(1,3,13))
-        RFileIO::readAscii(inFile,problemSetup.structuralPiezoSetup);
+        RFileIO::readAscii(inFile,candidate.structuralPiezoSetup);
     else
-        problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
+        candidate.structuralPiezoSetup = RStructuralPiezoSetup();
     if (inFile.getVersion() > RVersion(1,3,15))
-        RFileIO::readAscii(inFile,problemSetup.structuralThermalControlSetup);
+        RFileIO::readAscii(inFile,candidate.structuralThermalControlSetup);
     else
-        problemSetup.structuralThermalControlSetup = RStructuralThermalControlSetup();
+        candidate.structuralThermalControlSetup = RStructuralThermalControlSetup();
+    if (inFile.getVersion() > RVersion(1,3,19))
+    {
+        RFileIO::readAscii(inFile,candidate.structuralTrussDynamicsSetup);
+        RFileIO::readAscii(inFile,candidate.structuralTrussDynamicsRestartData);
+    }
+    else
+    {
+        candidate.structuralTrussDynamicsSetup = RStructuralTrussDynamicsSetup();
+        candidate.structuralTrussDynamicsRestartData.clear();
+    }
+    problemSetup = candidate;
 }
 
 void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
 {
-    RFileIO::readBinary(inFile,problemSetup.restart);
-    RFileIO::readBinary(inFile,problemSetup.radiationSetup);
-    RFileIO::readBinary(inFile,problemSetup.modalSetup);
+    RProblemSetup candidate(problemSetup);
+    RFileIO::readBinary(inFile,candidate.restart);
+    RFileIO::readBinary(inFile,candidate.radiationSetup);
+    RFileIO::readBinary(inFile,candidate.modalSetup);
     if (inFile.getVersion() > RVersion(0,3,4))
     {
-        RFileIO::readBinary(inFile,problemSetup.meshSetup);
+        RFileIO::readBinary(inFile,candidate.meshSetup);
     }
     if (inFile.getVersion() > RVersion(1,2,0))
     {
-        RFileIO::readBinary(inFile,problemSetup.acousticSetup);
+        RFileIO::readBinary(inFile,candidate.acousticSetup);
     }
     if (inFile.getVersion() > RVersion(1,3,1))
     {
         int massMatrixType;
         RFileIO::readBinary(inFile,massMatrixType);
-        problemSetup.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
+        candidate.setMassMatrixType(static_cast<RMassMatrixType>(massMatrixType));
     }
     if (inFile.getVersion() > RVersion(1,3,4))
     {
-        RFileIO::readBinary(inFile,problemSetup.structuralInteractionSetup);
+        RFileIO::readBinary(inFile,candidate.structuralInteractionSetup);
     }
     if (inFile.getVersion() > RVersion(1,3,5))
     {
-        RFileIO::readBinary(inFile,problemSetup.structuralDynamicsSetup);
-        RFileIO::readBinary(inFile,problemSetup.parallelExecutionConfig);
+        RFileIO::readBinary(inFile,candidate.structuralDynamicsSetup);
+        RFileIO::readBinary(inFile,candidate.parallelExecutionConfig);
     }
     else
     {
-        problemSetup.structuralDynamicsSetup = RStructuralDynamicsSetup();
-        problemSetup.parallelExecutionConfig = RParallelExecutionConfig();
+        candidate.structuralDynamicsSetup = RStructuralDynamicsSetup();
+        candidate.parallelExecutionConfig = RParallelExecutionConfig();
     }
     if (inFile.getVersion() > RVersion(1,3,6))
     {
-        RFileIO::readBinary(inFile,problemSetup.structuralDynamicsRestartData);
+        RFileIO::readBinary(inFile,candidate.structuralDynamicsRestartData);
     }
     else
     {
-        problemSetup.structuralDynamicsRestartData.clear();
+        candidate.structuralDynamicsRestartData.clear();
     }
     if (inFile.getVersion() > RVersion(1,3,10))
-        RFileIO::readBinary(inFile,problemSetup.structuralControlSetup);
+        RFileIO::readBinary(inFile,candidate.structuralControlSetup);
     else
-        problemSetup.structuralControlSetup = RStructuralControlSetup();
+        candidate.structuralControlSetup = RStructuralControlSetup();
     if (inFile.getVersion() > RVersion(1,3,12))
-        RFileIO::readBinary(inFile,problemSetup.structuralCableSetup);
+        RFileIO::readBinary(inFile,candidate.structuralCableSetup);
     else
-        problemSetup.structuralCableSetup = RStructuralCableSetup();
+        candidate.structuralCableSetup = RStructuralCableSetup();
     if (inFile.getVersion() > RVersion(1,3,13))
-        RFileIO::readBinary(inFile,problemSetup.structuralPiezoSetup);
+        RFileIO::readBinary(inFile,candidate.structuralPiezoSetup);
     else
-        problemSetup.structuralPiezoSetup = RStructuralPiezoSetup();
+        candidate.structuralPiezoSetup = RStructuralPiezoSetup();
     if (inFile.getVersion() > RVersion(1,3,15))
-        RFileIO::readBinary(inFile,problemSetup.structuralThermalControlSetup);
+        RFileIO::readBinary(inFile,candidate.structuralThermalControlSetup);
     else
-        problemSetup.structuralThermalControlSetup = RStructuralThermalControlSetup();
+        candidate.structuralThermalControlSetup = RStructuralThermalControlSetup();
+    if (inFile.getVersion() > RVersion(1,3,19))
+    {
+        RFileIO::readBinary(inFile,candidate.structuralTrussDynamicsSetup);
+        RFileIO::readBinary(inFile,candidate.structuralTrussDynamicsRestartData);
+    }
+    else
+    {
+        candidate.structuralTrussDynamicsSetup = RStructuralTrussDynamicsSetup();
+        candidate.structuralTrussDynamicsRestartData.clear();
+    }
+    problemSetup = candidate;
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
 {
+    problemSetup.structuralTrussDynamicsSetup.validate();
+    problemSetup.structuralTrussDynamicsRestartData.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19)
+        && (problemSetup.structuralTrussDynamicsSetup.hasNonDefaultData()
+            || problemSetup.structuralTrussDynamicsRestartData.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
     RFileIO::writeAscii(outFile,problemSetup.restart,addNewLine);
     if (!addNewLine)
     {
@@ -4734,10 +4771,20 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralPiezoSetup,addNewLine);
     if (!addNewLine) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralThermalControlSetup,addNewLine);
+    if (!addNewLine && outFile.getVersion() > RVersion(1,3,19)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralTrussDynamicsSetup,addNewLine);
+    if (!addNewLine && outFile.getVersion() > RVersion(1,3,19)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralTrussDynamicsRestartData,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
 {
+    problemSetup.structuralTrussDynamicsSetup.validate();
+    problemSetup.structuralTrussDynamicsRestartData.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19)
+        && (problemSetup.structuralTrussDynamicsSetup.hasNonDefaultData()
+            || problemSetup.structuralTrussDynamicsRestartData.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
     RFileIO::writeBinary(outFile,problemSetup.restart);
     RFileIO::writeBinary(outFile,problemSetup.radiationSetup);
     RFileIO::writeBinary(outFile,problemSetup.modalSetup);
@@ -4752,6 +4799,8 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralCableSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralPiezoSetup);
     RFileIO::writeBinary(outFile,problemSetup.structuralThermalControlSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralTrussDynamicsSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralTrussDynamicsRestartData);
 }
 
 
@@ -6858,4 +6907,692 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RViewFactorRow &viewFactorRow
 void RFileIO::writeBinary(RSaveFile &outFile, const RViewFactorRow &viewFactorRow)
 {
     RFileIO::writeBinary(outFile,viewFactorRow.viewFactors);
+}
+
+/*********************************************************************
+ * Version 1.3.20 native mixed TRUSS1 persistence                     *
+ *********************************************************************/
+
+namespace
+{
+void trussReadError()
+{
+    throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid or truncated native mixed TRUSS1 data.");
+}
+
+QString trussReadAsciiToken(RFile &file)
+{
+    QString token;
+    file.getTextStream() >> token;
+    if (file.getTextStream().status() != QTextStream::Ok) trussReadError();
+    return token;
+}
+
+void trussReadAscii(RFile &file, uint &value)
+{
+    const QString token = trussReadAsciiToken(file);
+    bool ok = false;
+    value = token.toUInt(&ok,10);
+    if (!ok || token.startsWith('-')) trussReadError();
+}
+
+void trussReadAscii(RFile &file, int &value)
+{
+    bool ok = false;
+    value = trussReadAsciiToken(file).toInt(&ok,10);
+    if (!ok) trussReadError();
+}
+
+void trussReadAscii(RFile &file, double &value)
+{
+    bool ok = false;
+    value = trussReadAsciiToken(file).toDouble(&ok);
+    if (!ok || !std::isfinite(value)) trussReadError();
+}
+
+void trussReadAscii(RFile &file, bool &value)
+{
+    QString token;
+    file.getTextStream() >> token;
+    if (file.getTextStream().status() != QTextStream::Ok) trussReadError();
+    if (token != "0" && token != "1") trussReadError();
+    value = token == "1";
+}
+
+void trussReadAscii(RFile &file, QString &value)
+{
+    QTextStream &stream = file.getTextStream();
+    stream.skipWhiteSpace();
+    QChar c;
+    stream >> c;
+    if (stream.status() != QTextStream::Ok || c != '"') trussReadError();
+    value.clear();
+    while (true)
+    {
+        stream >> c;
+        if (stream.status() != QTextStream::Ok) trussReadError();
+        if (c == '"') break;
+        if (c == '\0' || c == '\n' || c == '\r' || value.size() >= 4096) trussReadError();
+        value += c;
+    }
+}
+
+void trussReadAscii(RFile &file, QByteArray &value)
+{
+    QString hex;
+    trussReadAscii(file,hex);
+    if (!hex.isEmpty() && hex.size() != 64) trussReadError();
+    for (QChar c : hex)
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) trussReadError();
+    value = QByteArray::fromHex(hex.toLatin1());
+}
+
+template<typename T> void trussReadBinary(RFile &file, T &value)
+{
+    if (file.read(reinterpret_cast<char*>(&value),sizeof(T)) != qint64(sizeof(T))
+        || file.error() != RFile::NoError) trussReadError();
+}
+
+void trussReadBinary(RFile &file, double &value)
+{
+    if (file.read(reinterpret_cast<char*>(&value),sizeof(double)) != qint64(sizeof(double))
+        || file.error() != RFile::NoError || !std::isfinite(value)) trussReadError();
+}
+
+void trussReadBinary(RFile &file, bool &value)
+{
+    unsigned char raw = 0;
+    trussReadBinary(file,raw);
+    if (raw > 1) trussReadError();
+    value = raw == 1;
+}
+
+void trussReadBinary(RFile &file, QString &value)
+{
+    uint count = 0;
+    trussReadBinary(file,count);
+    if (count > 4096u || file.bytesAvailable() < qint64(count)) trussReadError();
+    const QByteArray bytes = file.read(count);
+    if (bytes.size() != qint64(count) || file.error() != RFile::NoError) trussReadError();
+    value = QString::fromUtf8(bytes);
+    if (value.toUtf8() != bytes || value.contains(QChar('\0'))
+        || value.contains('"') || value.contains('\n') || value.contains('\r')) trussReadError();
+}
+
+void trussReadBinary(RFile &file, QByteArray &value)
+{
+    uint count = 0;
+    trussReadBinary(file,count);
+    if (count != 0 && count != 32) trussReadError();
+    value = file.read(count);
+    if (value.size() != qint64(count) || file.error() != RFile::NoError) trussReadError();
+}
+
+template<typename Read> uint trussReadCount(Read &read, uint limit = 1000000u)
+{
+    uint count = 0;
+    read(count);
+    if (count > limit) trussReadError();
+    return count;
+}
+
+template<typename Read, typename T> void trussReadVector(Read &read, std::vector<T> &values,
+                                                       uint limit = 1000000u)
+{
+    const uint count = trussReadCount(read,limit);
+    values.resize(count);
+    for (auto &value : values) read(value);
+}
+
+void trussWriteAsciiValue(RSaveFile &file, const QString &value, bool newLine)
+{
+    RFileIO::writeAscii(file,QString('"') + value + '"',newLine);
+}
+
+void trussWriteAsciiValue(RSaveFile &file, const QByteArray &value, bool newLine)
+{
+    trussWriteAsciiValue(file,QString::fromLatin1(value.toHex()),newLine);
+}
+
+void trussWriteAsciiValue(RSaveFile &file, bool value, bool newLine)
+{
+    RFileIO::writeAscii(file,uint(value ? 1 : 0),newLine);
+}
+
+template<typename T> void trussWriteAsciiValue(RSaveFile &file, const T &value, bool newLine)
+{
+    RFileIO::writeAscii(file,value,newLine);
+}
+
+void trussWriteBinaryValue(RSaveFile &file, const QByteArray &value)
+{
+    RFileIO::writeBinary(file,uint(value.size()));
+    if (file.write(value) != value.size() || file.error() != RFile::NoError)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Failed to write native mixed TRUSS1 system identity.");
+}
+
+template<typename T> void trussWriteBinaryValue(RSaveFile &file, const T &value)
+{
+    RFileIO::writeBinary(file,value);
+}
+}
+
+void RFileIO::readAscii(RFile &inFile, RStructuralTrussDynamicsSetup &data)
+{
+    RStructuralTrussDynamicsSetup result;
+    auto read = [&](auto &value) { trussReadAscii(inFile,value); };
+
+    read(result.enabled);
+    read(result.sourceFingerprint);
+    result.passiveMembers.resize(trussReadCount(read));
+    for (auto &member : result.passiveMembers)
+    {
+        read(member.physicalElementId);
+        read(member.referenceLength);
+    }
+    result.activeMembers.resize(trussReadCount(read));
+    for (auto &member : result.activeMembers)
+    {
+        read(member.physicalElementId);
+        read(member.portId);
+        read(member.referenceLength);
+        read(member.axialStiffness);
+        read(member.coupling);
+        read(member.capacitance);
+        int kind = 0;
+        read(kind);
+        if (kind < 0 || kind > 1) trussReadError();
+        member.kind = static_cast<RStructuralTrussElectricalKind>(kind);
+        read(member.initialValue);
+        int massSource = 0;
+        read(massSource);
+        if (massSource < 0 || massSource > 1) trussReadError();
+        member.massSource = static_cast<RStructuralTrussMassSource>(massSource);
+        read(member.fixedMass);
+    }
+    result.cableMembers.resize(trussReadCount(read));
+    for (auto &member : result.cableMembers)
+    {
+        read(member.physicalElementId);
+        read(member.initialReferenceLength);
+        read(member.initialTension);
+        int massSource = 0;
+        read(massSource);
+        if (massSource < 0 || massSource > 1) trussReadError();
+        member.massSource = static_cast<RStructuralTrussMassSource>(massSource);
+        read(member.fixedMass);
+    }
+    result.heldCommands.resize(trussReadCount(read));
+    uint targetCount = 0;
+    auto targets = [&]()
+    {
+        const uint count = trussReadCount(read,1000000u - targetCount);
+        targetCount += count;
+        return count;
+    };
+    for (auto &command : result.heldCommands)
+    {
+        read(command.stepIndex);
+        command.electrical.resize(targets());
+        for (auto &target : command.electrical)
+        {
+            read(target.portId);
+            read(target.value);
+        }
+        command.cables.resize(targets());
+        for (auto &target : command.cables)
+        {
+            read(target.physicalElementId);
+            read(target.referenceLength);
+        }
+        command.nodalForces.resize(targets());
+        for (auto &target : command.nodalForces)
+        {
+            read(target.physicalNodeId);
+            for (double &force : target.force) read(force);
+        }
+    }
+    read(result.maxIterations);
+    read(result.maxLineSearchIterations);
+    read(result.absoluteForceTolerance);
+    read(result.relativeForceTolerance);
+    read(result.linearRelativeTolerance);
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralTrussDynamicsSetup &data, bool addNewLine)
+{
+    data.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19))
+    {
+        if (data.hasNonDefaultData())
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
+        return;
+    }
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        trussWriteAsciiValue(outFile,value,addNewLine);
+        first = false;
+    };
+
+    write(data.enabled);
+    write(data.sourceFingerprint);
+    write(uint(data.passiveMembers.size()));
+    for (const auto &member : data.passiveMembers)
+    {
+        write(member.physicalElementId);
+        write(member.referenceLength);
+    }
+    write(uint(data.activeMembers.size()));
+    for (const auto &member : data.activeMembers)
+    {
+        write(member.physicalElementId);
+        write(member.portId);
+        write(member.referenceLength);
+        write(member.axialStiffness);
+        write(member.coupling);
+        write(member.capacitance);
+        write(int(member.kind));
+        write(member.initialValue);
+        write(int(member.massSource));
+        write(member.fixedMass);
+    }
+    write(uint(data.cableMembers.size()));
+    for (const auto &member : data.cableMembers)
+    {
+        write(member.physicalElementId);
+        write(member.initialReferenceLength);
+        write(member.initialTension);
+        write(int(member.massSource));
+        write(member.fixedMass);
+    }
+    write(uint(data.heldCommands.size()));
+    for (const auto &command : data.heldCommands)
+    {
+        write(command.stepIndex);
+        write(uint(command.electrical.size()));
+        for (const auto &target : command.electrical)
+        {
+            write(target.portId);
+            write(target.value);
+        }
+        write(uint(command.cables.size()));
+        for (const auto &target : command.cables)
+        {
+            write(target.physicalElementId);
+            write(target.referenceLength);
+        }
+        write(uint(command.nodalForces.size()));
+        for (const auto &target : command.nodalForces)
+        {
+            write(target.physicalNodeId);
+            for (double force : target.force) write(force);
+        }
+    }
+    write(data.maxIterations);
+    write(data.maxLineSearchIterations);
+    write(data.absoluteForceTolerance);
+    write(data.relativeForceTolerance);
+    write(data.linearRelativeTolerance);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralTrussDynamicsSetup &data)
+{
+    RStructuralTrussDynamicsSetup result;
+    auto read = [&](auto &value) { trussReadBinary(inFile,value); };
+
+    read(result.enabled);
+    read(result.sourceFingerprint);
+    result.passiveMembers.resize(trussReadCount(read));
+    for (auto &member : result.passiveMembers)
+    {
+        read(member.physicalElementId);
+        read(member.referenceLength);
+    }
+    result.activeMembers.resize(trussReadCount(read));
+    for (auto &member : result.activeMembers)
+    {
+        read(member.physicalElementId);
+        read(member.portId);
+        read(member.referenceLength);
+        read(member.axialStiffness);
+        read(member.coupling);
+        read(member.capacitance);
+        int kind = 0;
+        read(kind);
+        if (kind < 0 || kind > 1) trussReadError();
+        member.kind = static_cast<RStructuralTrussElectricalKind>(kind);
+        read(member.initialValue);
+        int massSource = 0;
+        read(massSource);
+        if (massSource < 0 || massSource > 1) trussReadError();
+        member.massSource = static_cast<RStructuralTrussMassSource>(massSource);
+        read(member.fixedMass);
+    }
+    result.cableMembers.resize(trussReadCount(read));
+    for (auto &member : result.cableMembers)
+    {
+        read(member.physicalElementId);
+        read(member.initialReferenceLength);
+        read(member.initialTension);
+        int massSource = 0;
+        read(massSource);
+        if (massSource < 0 || massSource > 1) trussReadError();
+        member.massSource = static_cast<RStructuralTrussMassSource>(massSource);
+        read(member.fixedMass);
+    }
+    result.heldCommands.resize(trussReadCount(read));
+    uint targetCount = 0;
+    auto targets = [&]()
+    {
+        const uint count = trussReadCount(read,1000000u - targetCount);
+        targetCount += count;
+        return count;
+    };
+    for (auto &command : result.heldCommands)
+    {
+        read(command.stepIndex);
+        command.electrical.resize(targets());
+        for (auto &target : command.electrical)
+        {
+            read(target.portId);
+            read(target.value);
+        }
+        command.cables.resize(targets());
+        for (auto &target : command.cables)
+        {
+            read(target.physicalElementId);
+            read(target.referenceLength);
+        }
+        command.nodalForces.resize(targets());
+        for (auto &target : command.nodalForces)
+        {
+            read(target.physicalNodeId);
+            for (double &force : target.force) read(force);
+        }
+    }
+    read(result.maxIterations);
+    read(result.maxLineSearchIterations);
+    read(result.absoluteForceTolerance);
+    read(result.relativeForceTolerance);
+    read(result.linearRelativeTolerance);
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralTrussDynamicsSetup &data)
+{
+    data.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19))
+    {
+        if (data.hasNonDefaultData())
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
+        return;
+    }
+    auto write = [&](const auto &value) { trussWriteBinaryValue(outFile,value); };
+
+    write(data.enabled);
+    write(data.sourceFingerprint);
+    write(uint(data.passiveMembers.size()));
+    for (const auto &member : data.passiveMembers)
+    {
+        write(member.physicalElementId);
+        write(member.referenceLength);
+    }
+    write(uint(data.activeMembers.size()));
+    for (const auto &member : data.activeMembers)
+    {
+        write(member.physicalElementId);
+        write(member.portId);
+        write(member.referenceLength);
+        write(member.axialStiffness);
+        write(member.coupling);
+        write(member.capacitance);
+        write(int(member.kind));
+        write(member.initialValue);
+        write(int(member.massSource));
+        write(member.fixedMass);
+    }
+    write(uint(data.cableMembers.size()));
+    for (const auto &member : data.cableMembers)
+    {
+        write(member.physicalElementId);
+        write(member.initialReferenceLength);
+        write(member.initialTension);
+        write(int(member.massSource));
+        write(member.fixedMass);
+    }
+    write(uint(data.heldCommands.size()));
+    for (const auto &command : data.heldCommands)
+    {
+        write(command.stepIndex);
+        write(uint(command.electrical.size()));
+        for (const auto &target : command.electrical)
+        {
+            write(target.portId);
+            write(target.value);
+        }
+        write(uint(command.cables.size()));
+        for (const auto &target : command.cables)
+        {
+            write(target.physicalElementId);
+            write(target.referenceLength);
+        }
+        write(uint(command.nodalForces.size()));
+        for (const auto &target : command.nodalForces)
+        {
+            write(target.physicalNodeId);
+            for (double force : target.force) write(force);
+        }
+    }
+    write(data.maxIterations);
+    write(data.maxLineSearchIterations);
+    write(data.absoluteForceTolerance);
+    write(data.relativeForceTolerance);
+    write(data.linearRelativeTolerance);
+}
+
+void RFileIO::readAscii(RFile &inFile, RStructuralTrussDynamicsRestartData &data)
+{
+    RStructuralTrussDynamicsRestartData result;
+    auto read = [&](auto &value) { trussReadAscii(inFile,value); };
+    read(result.available);
+    read(result.completedSteps);
+    read(result.runTargetSteps);
+    read(result.initialTime);
+    read(result.time);
+    read(result.fixedTimeStep);
+    read(result.nextCommandIndex);
+    trussReadVector(read,result.orderedPhysicalNodeIds);
+    trussReadVector(read,result.orderedMemberPhysicalIds);
+    trussReadVector(read,result.orderedPortIds);
+    read(result.sourceFingerprint);
+    read(result.systemIdentity);
+    trussReadVector(read,result.q,3000000u);
+    trussReadVector(read,result.v,3000000u);
+    trussReadVector(read,result.a,3000000u);
+    trussReadVector(read,result.reactions,3000000u);
+    trussReadVector(read,result.externalForce,3000000u);
+    trussReadVector(read,result.memberInputKinds);
+    trussReadVector(read,result.memberInputValues);
+    trussReadVector(read,result.portVoltages);
+    trussReadVector(read,result.portCharges);
+    trussReadVector(read,result.portEnthalpies);
+    read(result.storedEnergy);
+    read(result.kineticEnergy);
+    read(result.initialTotalEnergy);
+    read(result.cumulativeExternalWork);
+    read(result.cumulativeSupportWork);
+    read(result.cumulativeElectricalWork);
+    read(result.cumulativeRestLengthWork);
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::writeAscii(RSaveFile &outFile, const RStructuralTrussDynamicsRestartData &data, bool addNewLine)
+{
+    data.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19))
+    {
+        if (data.hasNonDefaultData())
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
+        return;
+    }
+    struct PrecisionGuard
+    {
+        QTextStream &stream;
+        int previous;
+        ~PrecisionGuard() { stream.setRealNumberPrecision(previous); }
+    } precisionGuard{outFile.getTextStream(),outFile.getTextStream().realNumberPrecision()};
+    outFile.getTextStream().setRealNumberPrecision(17);
+    bool first = true;
+    auto write = [&](const auto &value)
+    {
+        if (!first && !addNewLine) RFileIO::writeAscii(outFile,' ',false);
+        trussWriteAsciiValue(outFile,value,addNewLine);
+        first = false;
+    };
+    write(data.available);
+    write(data.completedSteps);
+    write(data.runTargetSteps);
+    write(data.initialTime);
+    write(data.time);
+    write(data.fixedTimeStep);
+    write(data.nextCommandIndex);
+    write(uint(data.orderedPhysicalNodeIds.size()));
+    for (const auto &value : data.orderedPhysicalNodeIds) write(value);
+    write(uint(data.orderedMemberPhysicalIds.size()));
+    for (const auto &value : data.orderedMemberPhysicalIds) write(value);
+    write(uint(data.orderedPortIds.size()));
+    for (const auto &value : data.orderedPortIds) write(value);
+    write(data.sourceFingerprint);
+    write(data.systemIdentity);
+    write(uint(data.q.size()));
+    for (const auto &value : data.q) write(value);
+    write(uint(data.v.size()));
+    for (const auto &value : data.v) write(value);
+    write(uint(data.a.size()));
+    for (const auto &value : data.a) write(value);
+    write(uint(data.reactions.size()));
+    for (const auto &value : data.reactions) write(value);
+    write(uint(data.externalForce.size()));
+    for (const auto &value : data.externalForce) write(value);
+    write(uint(data.memberInputKinds.size()));
+    for (const auto &value : data.memberInputKinds) write(value);
+    write(uint(data.memberInputValues.size()));
+    for (const auto &value : data.memberInputValues) write(value);
+    write(uint(data.portVoltages.size()));
+    for (const auto &value : data.portVoltages) write(value);
+    write(uint(data.portCharges.size()));
+    for (const auto &value : data.portCharges) write(value);
+    write(uint(data.portEnthalpies.size()));
+    for (const auto &value : data.portEnthalpies) write(value);
+    write(data.storedEnergy);
+    write(data.kineticEnergy);
+    write(data.initialTotalEnergy);
+    write(data.cumulativeExternalWork);
+    write(data.cumulativeSupportWork);
+    write(data.cumulativeElectricalWork);
+    write(data.cumulativeRestLengthWork);
+}
+
+void RFileIO::readBinary(RFile &inFile, RStructuralTrussDynamicsRestartData &data)
+{
+    RStructuralTrussDynamicsRestartData result;
+    auto read = [&](auto &value) { trussReadBinary(inFile,value); };
+    read(result.available);
+    read(result.completedSteps);
+    read(result.runTargetSteps);
+    read(result.initialTime);
+    read(result.time);
+    read(result.fixedTimeStep);
+    read(result.nextCommandIndex);
+    trussReadVector(read,result.orderedPhysicalNodeIds);
+    trussReadVector(read,result.orderedMemberPhysicalIds);
+    trussReadVector(read,result.orderedPortIds);
+    read(result.sourceFingerprint);
+    read(result.systemIdentity);
+    trussReadVector(read,result.q,3000000u);
+    trussReadVector(read,result.v,3000000u);
+    trussReadVector(read,result.a,3000000u);
+    trussReadVector(read,result.reactions,3000000u);
+    trussReadVector(read,result.externalForce,3000000u);
+    trussReadVector(read,result.memberInputKinds);
+    trussReadVector(read,result.memberInputValues);
+    trussReadVector(read,result.portVoltages);
+    trussReadVector(read,result.portCharges);
+    trussReadVector(read,result.portEnthalpies);
+    read(result.storedEnergy);
+    read(result.kineticEnergy);
+    read(result.initialTotalEnergy);
+    read(result.cumulativeExternalWork);
+    read(result.cumulativeSupportWork);
+    read(result.cumulativeElectricalWork);
+    read(result.cumulativeRestLengthWork);
+    result.validate();
+    data = std::move(result);
+}
+
+void RFileIO::writeBinary(RSaveFile &outFile, const RStructuralTrussDynamicsRestartData &data)
+{
+    data.validate();
+    if (outFile.getVersion() <= RVersion(1,3,19))
+    {
+        if (data.hasNonDefaultData())
+            throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native mixed TRUSS1 data requires model format 1.3.20.");
+        return;
+    }
+    auto write = [&](const auto &value) { trussWriteBinaryValue(outFile,value); };
+    write(data.available);
+    write(data.completedSteps);
+    write(data.runTargetSteps);
+    write(data.initialTime);
+    write(data.time);
+    write(data.fixedTimeStep);
+    write(data.nextCommandIndex);
+    write(uint(data.orderedPhysicalNodeIds.size()));
+    for (const auto &value : data.orderedPhysicalNodeIds) write(value);
+    write(uint(data.orderedMemberPhysicalIds.size()));
+    for (const auto &value : data.orderedMemberPhysicalIds) write(value);
+    write(uint(data.orderedPortIds.size()));
+    for (const auto &value : data.orderedPortIds) write(value);
+    write(data.sourceFingerprint);
+    write(data.systemIdentity);
+    write(uint(data.q.size()));
+    for (const auto &value : data.q) write(value);
+    write(uint(data.v.size()));
+    for (const auto &value : data.v) write(value);
+    write(uint(data.a.size()));
+    for (const auto &value : data.a) write(value);
+    write(uint(data.reactions.size()));
+    for (const auto &value : data.reactions) write(value);
+    write(uint(data.externalForce.size()));
+    for (const auto &value : data.externalForce) write(value);
+    write(uint(data.memberInputKinds.size()));
+    for (const auto &value : data.memberInputKinds) write(value);
+    write(uint(data.memberInputValues.size()));
+    for (const auto &value : data.memberInputValues) write(value);
+    write(uint(data.portVoltages.size()));
+    for (const auto &value : data.portVoltages) write(value);
+    write(uint(data.portCharges.size()));
+    for (const auto &value : data.portCharges) write(value);
+    write(uint(data.portEnthalpies.size()));
+    for (const auto &value : data.portEnthalpies) write(value);
+    write(data.storedEnergy);
+    write(data.kineticEnergy);
+    write(data.initialTotalEnergy);
+    write(data.cumulativeExternalWork);
+    write(data.cumulativeSupportWork);
+    write(data.cumulativeElectricalWork);
+    write(data.cumulativeRestLengthWork);
 }

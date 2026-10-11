@@ -81,7 +81,7 @@ void TestStructuralCableSetup::problemSetupRoundTrip_data()
 void TestStructuralCableSetup::problemSetupRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.19"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.20"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 

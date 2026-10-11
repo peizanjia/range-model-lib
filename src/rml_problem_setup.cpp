@@ -19,6 +19,8 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->structuralPiezoSetup = pProblemSetup->structuralPiezoSetup;
         this->structuralThermalControlSetup = pProblemSetup->structuralThermalControlSetup;
         this->structuralDynamicsRestartData = pProblemSetup->structuralDynamicsRestartData;
+        this->structuralTrussDynamicsSetup = pProblemSetup->structuralTrussDynamicsSetup;
+        this->structuralTrussDynamicsRestartData = pProblemSetup->structuralTrussDynamicsRestartData;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
 }
@@ -242,6 +244,38 @@ void RProblemSetup::setStructuralDynamicsRestartData(const RStructuralDynamicsRe
 {
     data.validate();
     this->structuralDynamicsRestartData = data;
+}
+
+const RStructuralTrussDynamicsSetup &RProblemSetup::getStructuralTrussDynamicsSetup() const
+{
+    return this->structuralTrussDynamicsSetup;
+}
+
+RStructuralTrussDynamicsSetup &RProblemSetup::getStructuralTrussDynamicsSetup()
+{
+    return this->structuralTrussDynamicsSetup;
+}
+
+void RProblemSetup::setStructuralTrussDynamicsSetup(const RStructuralTrussDynamicsSetup &data)
+{
+    data.validate();
+    this->structuralTrussDynamicsSetup = data;
+}
+
+const RStructuralTrussDynamicsRestartData &RProblemSetup::getStructuralTrussDynamicsRestartData() const
+{
+    return this->structuralTrussDynamicsRestartData;
+}
+
+RStructuralTrussDynamicsRestartData &RProblemSetup::getStructuralTrussDynamicsRestartData()
+{
+    return this->structuralTrussDynamicsRestartData;
+}
+
+void RProblemSetup::setStructuralTrussDynamicsRestartData(const RStructuralTrussDynamicsRestartData &data)
+{
+    data.validate();
+    this->structuralTrussDynamicsRestartData = data;
 }
 
 const RParallelExecutionConfig &RProblemSetup::getParallelExecutionConfig() const

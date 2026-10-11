@@ -18,7 +18,26 @@ private slots:
     void localTransformationIsBlockDiagonal();
     void quadraticShapeFunctions();
     void quadraticTopologyUtilities();
+    void linearTrussInterpolation();
 };
+
+void TestElement::linearTrussInterpolation()
+{
+    const std::vector<RNode> nodes{RNode(3,4,5),RNode(5,6,7)};
+    RElement element(R_ELEMENT_TRUSS1);element.setNodeId(0,0);element.setNodeId(1,1);
+    RRVector values(2);values[0]=-2;values[1]=10;
+    for (double t : {0.0,.25,.5,.75,1.0})
+    {
+        const RNode location(3+2*t,4+2*t,5+2*t);
+        const double expected=-2+12*t;
+        QVERIFY(std::abs(element.interpolate(nodes,location,values)-expected)<1e-14);
+        RRVector distances(2);distances[0]=std::sqrt(12.0)*t;distances[1]=std::sqrt(12.0)*(1-t);
+        QVERIFY(std::abs(element.interpolate(nodes,location,values,distances)-expected)<1e-14);
+    }
+    element.swapNodeIds(0,1);std::swap(values[0],values[1]);
+    QCOMPARE(element.interpolate(nodes,nodes[1],values),10.0);
+    QCOMPARE(element.interpolate(nodes,nodes[0],values),-2.0);
+}
 
 void TestElement::nodeCountByType()
 {
