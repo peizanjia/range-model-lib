@@ -26,14 +26,17 @@ RConditionComponent::~RConditionComponent ()
 void RConditionComponent::_init
                       (const RConditionComponent *pConditionComponent)
 {
-    this->keyType = R_VARIABLE_TIME;
-    this->RValueTable::setKeyName (RVariable::getName (this->getKeyType()));
-    this->RValueTable::setKeyUnits (RVariable::getUnits (this->getKeyType()));
     if (pConditionComponent)
     {
         this->keyType = pConditionComponent->keyType;
         this->type = pConditionComponent->type;
         this->enabled = pConditionComponent->enabled;
+    }
+    else
+    {
+        this->keyType = R_VARIABLE_TIME;
+        this->RValueTable::setKeyName (RVariable::getName (this->getKeyType()));
+        this->RValueTable::setKeyUnits (RVariable::getUnits (this->getKeyType()));
     }
 } /* RConditionComponent::_init */
 

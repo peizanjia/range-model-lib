@@ -13,7 +13,8 @@ enum class RStructuralNativeControlSource : quint8 { FrozenTable = 0, LocalV3 = 
 enum class RStructuralNativeMeasurementQuantity : quint8
 {
     NodeDisplacement = 0, NodeVelocity = 1, NodeAcceleration = 2,
-    MemberAxialForce = 3, PortVoltage = 4, PortCharge = 5, SupportReaction = 6
+    MemberAxialForce = 3, PortVoltage = 4, PortCharge = 5, SupportReaction = 6,
+    PiezoReadoutVoltage = 7, PiezoReadoutCharge = 8
 };
 //! Explicit mapping to supported typed actions. Values 2 and 3 are unsupported.
 enum class RStructuralNativeActionQuantity : quint8

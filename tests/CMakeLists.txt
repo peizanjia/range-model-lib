@@ -12,6 +12,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 
 set(range_model_lib_tests
+    tst_structural_piezo_axial_setup
     tst_node
     tst_line
     tst_element
@@ -29,6 +30,9 @@ set(range_model_lib_tests
     tst_structural_product_profile
     tst_structural_cable_setup
     tst_structural_piezo_setup
+    tst_structural_piezo_readout_setup
+    tst_structural_piezo_layered_setup
+    tst_piezo_experiment_publication
     tst_structural_native_control_model
     tst_structural_truss_dynamics_setup
     tst_element_group_io
@@ -45,6 +49,9 @@ foreach(test_name IN LISTS range_model_lib_tests)
     if(test_name STREQUAL "tst_structural_native_control_model")
         add_test(NAME ${test_name} COMMAND ${test_name}
             -o "${CMAKE_CURRENT_BINARY_DIR}/native-control-model-detail.txt,txt" -o -,txt)
+    elseif(test_name MATCHES "^tst_structural_piezo_(readout|layered|axial)_setup$")
+        add_test(NAME ${test_name} COMMAND ${test_name}
+            -o "${CMAKE_CURRENT_BINARY_DIR}/${test_name}-detail.txt,txt" -o -,txt)
     else()
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()

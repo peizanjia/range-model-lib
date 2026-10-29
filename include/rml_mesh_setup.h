@@ -30,6 +30,10 @@ class RMeshSetup
         //! Copy constructor.
         RMeshSetup(const RMeshSetup &meshSetup);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RMeshSetup(RMeshSetup &&) = default;
+        RMeshSetup &operator=(RMeshSetup &&) = default;
+
         //! Destructor.
         ~RMeshSetup();
 

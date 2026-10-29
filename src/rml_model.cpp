@@ -7,13 +7,27 @@
 #include <QTemporaryDir>
 #include <stdexcept>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <io.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 #include <cmath>
 #include <omp.h>
 #include <stack>
 #include <float.h>
 #include <set>
+#include <map>
 #include <tuple>
 #include <limits>
+#include <type_traits>
+#include <utility>
 
 #include <rbl_error.h>
 #include <rbl_logger.h>
@@ -63,7 +77,11 @@ bool bindingPublicationDefaultSetup(const RModel &model,const QByteArray &defaul
     if (setup.getStructuralTrussDynamicsSetup().hasNonDefaultData()
         || setup.getStructuralTrussDynamicsRestartData().hasNonDefaultData()
         || setup.getStructuralNativeControlSpec().hasNonDefaultData()
-        || setup.getStructuralNativeControlState().hasNonDefaultData()) return false;
+        || setup.getStructuralNativeControlState().hasNonDefaultData()
+        || setup.getStructuralPiezoLayeredSetup().hasNonDefaultData()
+        || setup.getStructuralPiezoLayeredRestart().available
+        || !setup.getStructuralPiezoLayeredRestart().sourceFingerprint.isEmpty()
+        || !setup.getStructuralPiezoLayeredRestart().stateBytes.isEmpty()) return false;
     const auto &interactions=setup.getStructuralInteractionSetup();
     if (!interactions.getLinearConstraints().empty() || !interactions.getCouplings().empty()
         || !interactions.getSensors().empty() || !interactions.getActuators().empty() || !interactions.getPrescribedMotions().empty()
@@ -234,6 +252,177 @@ bool RModel::applyStaticMeshBindingCandidate(const RModel &candidate,
     catch (const RError &failure) { return fail(failure.getMessage()); }
     catch (const std::exception &failure) { return fail(QString::fromUtf8(failure.what())); }
     catch (...) { return fail(QStringLiteral("Static binding preparation failed before publication.")); }
+}
+
+bool RModel::applyPiezoExperimentCandidate(const RModel &candidate,
+    const std::function<bool(const RModel &)> &validatePrepared, QString *error)
+{
+    static_assert(std::is_nothrow_swappable_v<RProblemSetup>, "Complete experiment setup must swap without allocations.");
+    static_assert(std::is_nothrow_swappable_v<RTimeSolver>, "Experiment time solver must swap without allocations.");
+    static_assert(std::is_nothrow_swappable_v<RProblemTaskItem>, "Experiment task tree must swap without allocations.");
+    static_assert(noexcept(matrixSolverConfs.swap(matrixSolverConfs)), "Matrix configuration storage must swap without allocations.");
+    static_assert(noexcept(monitoringPointManager.swap(monitoringPointManager)), "Monitoring storage must swap without allocations.");
+    const auto fail = [&](const QString &message) { if (error) *error = message; return false; };
+    try
+    {
+        if (!validatePrepared)
+            return fail(QStringLiteral("Complete experiment publication requires an approved prepared-state validator."));
+        const auto qualified = [&](const RModel &model) {
+            const auto mask = model.getProblemTaskTree().getProblemTypeMask();
+            if (mask & ~(R_PROBLEM_STRESS | R_PROBLEM_STRESS_MODAL)) return false;
+            const auto &axial = model.getProblemSetup().getStructuralPiezoAxialSetup();
+            if (axial.enabled) {
+                axial.validate(model);
+                const auto &restart=model.getProblemSetup().getStructuralPiezoAxialRestart();
+                restart.validate();
+                return !axial.sourceFingerprint.isEmpty()
+                    && (!restart.available || restart.sourceFingerprint==axial.sourceFingerprint);
+            }
+            const auto &layered = model.getProblemSetup().getStructuralPiezoLayeredSetup();
+            if (layered.enabled) {
+                if (layered.sourceFingerprint.isEmpty()) return false;
+                layered.validate(model);
+                const auto &restart = model.getProblemSetup().getStructuralPiezoLayeredRestart();
+                restart.validate();
+                if (restart.available && restart.sourceFingerprint != layered.sourceFingerprint) return false;
+                return true;
+            }
+            layered.validate();
+            const auto &setup = model.getProblemSetup();
+            if (setup.getStructuralTrussDynamicsSetup().enabled) {
+                setup.getStructuralTrussDynamicsSetup().validate(model);
+                setup.getStructuralPiezoReadoutSetup().validate();
+                setup.getStructuralTrussDynamicsRestartData().validate();
+                setup.getStructuralNativeControlSpec().validate(model);
+                setup.getStructuralNativeControlState().validate();
+                return !axial.hasNonDefaultData()
+                    && !setup.getStructuralPiezoAxialRestart().hasNonDefaultData();
+            }
+            // Ordinary structural setup/time/results form an exact captured
+            // baseline. The complete recipe may replace them, and typed Undo
+            // restores them under the mandatory whole-state validator.
+            setup.getStructuralDynamicsSetup().validate();
+            return !layered.hasNonDefaultData()
+                && !setup.getStructuralPiezoAxialSetup().hasNonDefaultData()
+                && !setup.getStructuralPiezoAxialRestart().hasNonDefaultData()
+                && !setup.getStructuralTrussDynamicsSetup().hasNonDefaultData()
+                && !setup.getStructuralNativeControlSpec().hasNonDefaultData()
+                && !setup.getStructuralNativeControlState().hasNonDefaultData()
+                && !setup.getStructuralPiezoReadoutSetup().hasNonDefaultData()
+                && !setup.getStructuralCableSetup().enabled
+                && !setup.getStructuralPiezoSetup().enabled
+                && !setup.getStructuralThermalControlSetup().enabled;
+        };
+        if (!qualified(*this) || !qualified(candidate)
+            || (!problemSetup.getStructuralPiezoLayeredSetup().enabled
+                && !candidate.problemSetup.getStructuralPiezoLayeredSetup().enabled
+                && !problemSetup.getStructuralPiezoAxialSetup().enabled
+                && !candidate.problemSetup.getStructuralPiezoAxialSetup().enabled))
+            return fail(QStringLiteral("Complete experiment publication requires a qualified piezo source or its captured baseline."));
+        validatePhysicalIds(); candidate.validatePhysicalIds();
+        const auto emptyTopology = [](const RModel &model) {
+            return !model.getNNodes() && !model.getNElements() && !model.getNElementGroups();
+        };
+        bool sameTopology = nodes.size() == candidate.nodes.size() && elements.size() == candidate.elements.size()
+            && points.size() == candidate.points.size() && lines.size() == candidate.lines.size()
+            && surfaces.size() == candidate.surfaces.size() && volumes.size() == candidate.volumes.size();
+        if (sameTopology) {
+            for (uint n = 0; n < nodes.size(); ++n)
+                if (!(nodes[n] == candidate.nodes[n]) || getNodePhysicalId(n) != candidate.getNodePhysicalId(n)) sameTopology = false;
+            for (uint e = 0; e < elements.size(); ++e) {
+                const auto &before = elements[e], &after = candidate.elements[e];
+                if (before.getPhysicalId() != after.getPhysicalId() || before.getType() != after.getType()
+                    || before.size() != after.size()) { sameTopology = false; break; }
+                for (uint j = 0; j < before.size(); ++j) if (before.getNodeId(j) != after.getNodeId(j)) sameTopology = false;
+            }
+            for (uint g = 0; g < getNElementGroups(); ++g) {
+                const auto &before = *getElementGroupPtr(g), &after = *candidate.getElementGroupPtr(g);
+                if (before.getPhysicalId() != after.getPhysicalId() || before.size() != after.size()) { sameTopology = false; break; }
+                for (uint j = 0; j < before.size(); ++j) if (before.get(j) != after.get(j)) sameTopology = false;
+            }
+        }
+        if (!sameTopology) {
+            const RModel *generated = emptyTopology(*this) ? &candidate : emptyTopology(candidate) ? this : nullptr;
+            if (generated) {
+                const bool solid=generated->problemSetup.getStructuralPiezoLayeredSetup().enabled && generated->problemSetup.getStructuralPiezoLayeredSetup().family==RStructuralPiezoLayeredModelFamily::Solid3D;
+                if (generated->getNVolumes() && !solid) return fail(QStringLiteral("Unsupported generated piezo volume topology."));
+                const bool rods=generated->problemSetup.getStructuralPiezoAxialSetup().enabled;
+                const bool layers=generated->problemSetup.getStructuralPiezoLayeredSetup().enabled;
+                if (!rods && !layers) return fail(QStringLiteral("Generated experiment requires a qualified piezo source."));
+                if (!rods && generated->getNPoints()) return fail(QStringLiteral("Layered templates cannot add POINT topology."));
+                const auto host=rods?R_ELEMENT_TRUSS1:
+                    generated->problemSetup.getStructuralPiezoLayeredSetup().family==RStructuralPiezoLayeredModelFamily::PlanarBeam?R_ELEMENT_BEAM1:R_ELEMENT_QUAD1;
+                for (const auto &element : generated->elements)
+                    if (solid ? (element.getType()!=R_ELEMENT_TETRA1 && element.getType()!=R_ELEMENT_HEXA1) : (element.getType()!=host && !(rods && element.getType()==R_ELEMENT_POINT)))
+                        return fail(QStringLiteral("Generated experiment contains unsupported physical elements."));
+            } else {
+                // An axial recipe may add/remove POINT entities to declare
+                // actual nodal conditions. Structural nodes and members stay
+                // exact; the approved complete-state validator owns the edit.
+                if (!(problemSetup.getStructuralPiezoAxialSetup().enabled || candidate.problemSetup.getStructuralPiezoAxialSetup().enabled)
+                    || nodes.size()!=candidate.nodes.size() || getNSurfaces() || candidate.getNSurfaces()
+                    || getNVolumes() || candidate.getNVolumes())
+                    return fail(QStringLiteral("Complete experiment cannot change existing structural topology."));
+                for(uint n=0;n<nodes.size();++n)
+                    if (!(nodes[n]==candidate.nodes[n]) || getNodePhysicalId(n)!=candidate.getNodePhysicalId(n))
+                        return fail(QStringLiteral("Axial conditions cannot change structural nodes."));
+                const auto structuralElements=[](const RModel &m) {
+                    std::map<uint,std::vector<uint>> entries;
+                    for(uint e=0;e<m.getNElements();++e) {
+                        const auto &element=m.getElement(e);
+                        if(element.getType()==R_ELEMENT_POINT) continue;
+                        std::vector<uint> data{uint(element.getType())};
+                        for(uint j=0;j<element.size();++j)data.push_back(m.getNodePhysicalId(element.getNodeId(j)));
+                        entries.emplace(m.getElementPhysicalId(e),std::move(data));
+                    }
+                    return entries;
+                };
+                if (structuralElements(*this)!=structuralElements(candidate))
+                    return fail(QStringLiteral("Axial conditions cannot change structural members."));
+            }
+        }
+        // A detached body owns all potentially throwing copies, validation and
+        // metadata preservation. The live subclass and document identity survive.
+        RModel prepared(candidate);
+        prepared.name = name; prepared.description = description; prepared.modelData = modelData;
+        {
+            for (uint g = 0; g < prepared.getNElementGroups(); ++g) {
+                auto *target = prepared.getElementGroupPtr(g);
+                const RElementGroup *source=nullptr;
+                for(uint previous=0;previous<getNElementGroups();++previous)
+                    if(getElementGroupPtr(previous)->getPhysicalId()==target->getPhysicalId()
+                        && getEntityGroupType(previous,true)==prepared.getEntityGroupType(g,true)) {
+                        source=getElementGroupPtr(previous);break;
+                    }
+                if(!source)continue;
+                auto candidateVariables=target->getData().getVariableData();
+                target->setName(source->getName()); target->setData(source->getData());
+                target->getData().getVariableData().swap(candidateVariables);
+            }
+        }
+        prepared.nextNodePhysicalId = std::max(nextNodePhysicalId, candidate.nextNodePhysicalId);
+        prepared.nextElementPhysicalId = std::max(nextElementPhysicalId, candidate.nextElementPhysicalId);
+        prepared.nextElementGroupPhysicalId = std::max(nextElementGroupPhysicalId, candidate.nextElementGroupPhysicalId);
+        prepared.validatePhysicalIds();
+        if (!qualified(prepared) || !validatePrepared(prepared))
+            return fail(QStringLiteral("Prepared experiment differs from its approved complete state."));
+        // Everything below is a verified noexcept swap or scalar write. No
+        // setter, callback, allocation, serialization or rollback runs at commit.
+        using std::swap;
+        swap(problemSetup, prepared.problemSetup); swap(taskTree, prepared.taskTree); swap(timeSolver, prepared.timeSolver);
+        matrixSolverConfs.swap(prepared.matrixSolverConfs); monitoringPointManager.swap(prepared.monitoringPointManager);
+        nodes.swap(prepared.nodes); elements.swap(prepared.elements);
+        points.swap(prepared.points); lines.swap(prepared.lines); surfaces.swap(prepared.surfaces); volumes.swap(prepared.volumes);
+        variables.swap(prepared.variables); nnodes = prepared.nnodes; nelements = prepared.nelements;
+        vectorFields.swap(prepared.vectorFields); scalarFields.swap(prepared.scalarFields); streamLines.swap(prepared.streamLines);
+        cuts.swap(prepared.cuts); isos.swap(prepared.isos); surfaceNeigs.swap(prepared.surfaceNeigs); volumeNeigs.swap(prepared.volumeNeigs);
+        nextNodePhysicalId = prepared.nextNodePhysicalId; nextElementPhysicalId = prepared.nextElementPhysicalId;
+        nextElementGroupPhysicalId = prepared.nextElementGroupPhysicalId;
+        return true;
+    }
+    catch (const RError &failure) { return fail(failure.getMessage()); }
+    catch (const std::exception &failure) { return fail(QString::fromUtf8(failure.what())); }
+    catch (...) { return fail(QStringLiteral("Complete experiment preparation failed before publication.")); }
 }
 
 void RModel::_init (const RModel *pModel)
@@ -765,7 +954,74 @@ void RModel::read(const QString &fileName)
 } /* RModel::read */
 
 
-void RModel::readInPlace(const QString &fileName)
+void RModel::readFromVerifiedFile(const QString &fileName, QFile &verifiedFile)
+{
+    if (fileName.isEmpty() || !verifiedFile.isOpen() || !verifiedFile.isReadable() || !verifiedFile.seek(0))
+    {
+        throw RError(RError::Type::OpenFile, R_ERROR_REF,
+                     "The verified model file is not open for reading.");
+    }
+
+    const QString extension = RFileUtils::getExtension(fileName);
+    RFile::Type fileType;
+    QIODevice::OpenMode openMode = QIODevice::ReadOnly;
+    if (extension == RModel::getDefaultFileExtension(false))
+    {
+        fileType = RFile::ASCII;
+        openMode |= QIODevice::Text;
+    }
+    else if (extension == RModel::getDefaultFileExtension(true))
+    {
+        fileType = RFile::BINARY;
+    }
+    else
+    {
+        throw RError(RError::Type::InvalidFileName, R_ERROR_REF,
+                     "Unknown extension \"%s\".", extension.toUtf8().constData());
+    }
+
+    const int descriptor = int(verifiedFile.handle());
+#ifdef Q_OS_WIN
+    int duplicateDescriptor = _dup(descriptor);
+    if (duplicateDescriptor >= 0)
+    {
+        const intptr_t duplicateHandle = _get_osfhandle(duplicateDescriptor);
+        if (duplicateHandle == -1 || !SetHandleInformation(
+                reinterpret_cast<HANDLE>(duplicateHandle), HANDLE_FLAG_INHERIT, 0))
+        {
+            _close(duplicateDescriptor);
+            duplicateDescriptor = -1;
+        }
+    }
+#else
+    const int duplicateDescriptor = ::fcntl(descriptor, F_DUPFD_CLOEXEC, 0);
+#endif
+    if (descriptor < 0 || duplicateDescriptor < 0)
+    {
+        throw RError(RError::Type::OpenFile, R_ERROR_REF,
+                     "The verified model file handle could not be duplicated.");
+    }
+
+    RFile parserFile(fileName, fileType);
+    if (!parserFile.open(duplicateDescriptor, openMode, QFileDevice::AutoCloseHandle))
+    {
+#ifdef Q_OS_WIN
+        _close(duplicateDescriptor);
+#else
+        ::close(duplicateDescriptor);
+#endif
+        throw RError(RError::Type::OpenFile, R_ERROR_REF,
+                     "The verified model file handle could not be opened by the model parser.");
+    }
+
+    RModel loadedModel;
+    loadedModel.readInPlace(fileName, &parserFile);
+    *this = loadedModel;
+}
+/* RModel::readFromVerifiedFile */
+
+
+void RModel::readInPlace(const QString &fileName, RFile *verifiedFile)
 {
     if (fileName.isEmpty())
     {
@@ -780,18 +1036,26 @@ void RModel::readInPlace(const QString &fileName)
 
         try
         {
+            QString nextTargetFileName;
             if (ext == RModel::getDefaultFileExtension(false))
             {
-                targetFileName = this->readAscii(targetFileName);
+                nextTargetFileName = this->readAscii(targetFileName, verifiedFile);
             }
             else if (ext == RModel::getDefaultFileExtension(true))
             {
-                targetFileName = this->readBinary(targetFileName);
+                nextTargetFileName = this->readBinary(targetFileName, verifiedFile);
             }
             else
             {
                 throw RError(RError::Type::InvalidFileName,R_ERROR_REF, "Unknown extension \"" + ext + "\".");
             }
+            if (verifiedFile && !nextTargetFileName.isEmpty())
+            {
+                throw RError(RError::Type::InvalidFileFormat, R_ERROR_REF,
+                             "A verified model handle cannot be used to follow a LINK file.");
+            }
+            verifiedFile = nullptr;
+            targetFileName = nextTargetFileName;
         }
         catch (RError &error)
         {
@@ -817,6 +1081,21 @@ void RModel::readInPlace(const QString &fileName)
         this->problemSetup.getStructuralNativeControlState().validate(this->problemSetup.getStructuralNativeControlSpec());
         this->problemSetup.getStructuralTrussDynamicsSetup().validate(*this);
     }
+    // Model-bound source checks must run independently of the controller route.
+    if(this->problemSetup.getStructuralPiezoReadoutSetup().hasNonDefaultData())
+        this->problemSetup.getStructuralTrussDynamicsSetup().validate(*this);
+    this->problemSetup.getStructuralPiezoLayeredSetup().validate(*this);
+    this->problemSetup.getStructuralPiezoLayeredRestart().validate();
+    const auto &layeredRestart=this->problemSetup.getStructuralPiezoLayeredRestart();
+    const auto &layeredSource=this->problemSetup.getStructuralPiezoLayeredSetup();
+    if(layeredRestart.available && (!layeredSource.enabled || layeredRestart.sourceFingerprint!=layeredSource.sourceFingerprint))
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Layered restart differs from its actual source.");
+    this->problemSetup.getStructuralPiezoAxialSetup().validate(*this);
+    this->problemSetup.getStructuralPiezoAxialRestart().validate();
+    const auto &axialRestart=this->problemSetup.getStructuralPiezoAxialRestart();
+    const auto &axialSource=this->problemSetup.getStructuralPiezoAxialSetup();
+    if(axialRestart.available && (!axialSource.enabled || axialRestart.sourceFingerprint!=axialSource.sourceFingerprint))
+        throw RError(RError::Type::InvalidInput,R_ERROR_REF,"Axial restart differs from its actual source.");
     RModelProblemTypeMask modelProblemType = this->checkMesh();
     if (modelProblemType != R_MODEL_PROBLEM_NONE)
     {
@@ -7903,7 +8182,7 @@ void RModel::writeLink(const QString &linkFileName, const QString &targetFileNam
 } /* RModel::writeLink */
 
 
-QString RModel::readAscii(const QString &fileName)
+QString RModel::readAscii(const QString &fileName, RFile *verifiedFile)
 {
     if (fileName.isEmpty())
     {
@@ -7912,12 +8191,13 @@ QString RModel::readAscii(const QString &fileName)
 
     RLogger::info("Reading ascii model file \'%s\'\n",fileName.toUtf8().constData());
 
-    RFile modelFile(fileName,RFile::ASCII);
-
-    if (!modelFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    RFile ownedModelFile(fileName,RFile::ASCII);
+    RFile *selectedModelFile = verifiedFile ? verifiedFile : &ownedModelFile;
+    if (!verifiedFile && !selectedModelFile->open(QIODevice::ReadOnly | QIODevice::Text))
     {
         throw RError(RError::Type::OpenFile,R_ERROR_REF,"Failed to open the file \'%s\'.",fileName.toUtf8().constData());
     }
+    RFile &modelFile = *selectedModelFile;
 
     RFileHeader fileHeader;
 
@@ -8143,7 +8423,7 @@ QString RModel::readAscii(const QString &fileName)
 } /* RModel::readAscii */
 
 
-QString RModel::readBinary(const QString &fileName)
+QString RModel::readBinary(const QString &fileName, RFile *verifiedFile)
 {
     if (fileName.isEmpty())
     {
@@ -8152,12 +8432,13 @@ QString RModel::readBinary(const QString &fileName)
 
     RLogger::info("Reading binary model file \'%s\'\n",fileName.toUtf8().constData());
 
-    RFile modelFile(fileName,RFile::BINARY);
-
-    if (!modelFile.open(QIODevice::ReadOnly))
+    RFile ownedModelFile(fileName,RFile::BINARY);
+    RFile *selectedModelFile = verifiedFile ? verifiedFile : &ownedModelFile;
+    if (!verifiedFile && !selectedModelFile->open(QIODevice::ReadOnly))
     {
         throw RError(RError::Type::OpenFile,R_ERROR_REF,"Failed to open the file \'%s\'.",fileName.toUtf8().constData());
     }
+    RFile &modelFile = *selectedModelFile;
 
     RFileHeader fileHeader;
 
@@ -8407,7 +8688,11 @@ void RModel::writeAscii(const QString &fileName) const
     if (this->problemSetup.getStructuralTrussDynamicsSetup().hasNonDefaultData()
         || this->problemSetup.getStructuralTrussDynamicsRestartData().hasNonDefaultData()
         || this->problemSetup.getStructuralNativeControlSpec().hasNonDefaultData()
-        || this->problemSetup.getStructuralNativeControlState().hasNonDefaultData())
+        || this->problemSetup.getStructuralNativeControlState().hasNonDefaultData()
+        || this->problemSetup.getStructuralPiezoLayeredSetup().hasNonDefaultData()
+        || this->problemSetup.getStructuralPiezoLayeredRestart().available
+        || !this->problemSetup.getStructuralPiezoLayeredRestart().sourceFingerprint.isEmpty()
+        || !this->problemSetup.getStructuralPiezoLayeredRestart().stateBytes.isEmpty())
         modelFile.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
 
     uint64_t nsteps = this->getNNodes()
@@ -8579,7 +8864,7 @@ void RModel::writeAscii(const QString &fileName) const
     if (!modelFile.commit())
     {
         throw RError(RError::Type::WriteFile,R_ERROR_REF,
-                     "Failed to commit model file '%s'.",fileName.toUtf8().constData());
+                     "Failed to commit model file '%s' (Qt file error %d): %s.",fileName.toUtf8().constData(),int(modelFile.error()),modelFile.errorString().toUtf8().constData());
     }
 
     RProgressFinalize("Done");
@@ -8763,7 +9048,7 @@ void RModel::writeBinary(const QString &fileName) const
     if (!modelFile.commit())
     {
         throw RError(RError::Type::WriteFile,R_ERROR_REF,
-                     "Failed to commit model file '%s'.",fileName.toUtf8().constData());
+                     "Failed to commit model file '%s' (Qt file error %d): %s.",fileName.toUtf8().constData(),int(modelFile.error()),modelFile.errorString().toUtf8().constData());
     }
 
     RProgressFinalize("Done");

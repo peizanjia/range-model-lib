@@ -119,7 +119,7 @@ void TestStructuralPiezoSetup::modelRoundTrip_data()
 void TestStructuralPiezoSetup::modelRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.21"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.24"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 

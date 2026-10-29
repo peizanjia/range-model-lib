@@ -32,6 +32,10 @@ class RProblemTaskItem
         //! Copy constructor.
         RProblemTaskItem(const RProblemTaskItem &solverTaskItem);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RProblemTaskItem(RProblemTaskItem &&) = default;
+        RProblemTaskItem &operator=(RProblemTaskItem &&) = default;
+
         //! Destructor.
         ~RProblemTaskItem();
 

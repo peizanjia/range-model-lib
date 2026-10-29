@@ -238,7 +238,7 @@ void TestProblemSetup::thermalControlSetupRoundTrip_data()
 void TestProblemSetup::thermalControlSetupRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.21"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.24"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
 
@@ -517,7 +517,7 @@ void TestProblemSetup::prescribedMotionRoundTrip_data()
 void TestProblemSetup::prescribedMotionRoundTrip()
 {
     QFETCH(bool,binary);
-    QCOMPARE(RModel::version.toString(),QString("1.3.21"));
+    QCOMPARE(RModel::version.toString(),QString("1.3.24"));
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     RModel source;

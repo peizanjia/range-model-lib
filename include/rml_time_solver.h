@@ -72,6 +72,10 @@ class RTimeSolver
         //! Copy constructor.
         RTimeSolver(const RTimeSolver &timeSolver);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RTimeSolver(RTimeSolver &&) = default;
+        RTimeSolver &operator=(RTimeSolver &&) = default;
+
         //! Destructor.
         ~RTimeSolver ();
 

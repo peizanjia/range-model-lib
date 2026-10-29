@@ -578,6 +578,7 @@ void RStructuralTrussDynamicsSetup::validate(const RModel &model) const
     validate();
     validateTopology(*this,model);
     model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
+    model.getProblemSetup().getStructuralPiezoReadoutSetup().validate(model);
     if (!sourceFingerprint.isEmpty())
         require(sourceFingerprint == computeSourceFingerprint(model),"Native truss setup is bound to a changed source model.");
 }
@@ -588,6 +589,7 @@ void RStructuralTrussDynamicsSetup::bindToModel(const RModel &model)
     validateValues(candidate,false);
     validateTopology(candidate,model);
     model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
+    model.getProblemSetup().getStructuralPiezoReadoutSetup().validate(model);
     candidate.sourceFingerprint = candidate.computeSourceFingerprint(model);
     candidate.validate();
     *this = std::move(candidate);
@@ -605,6 +607,7 @@ QString RStructuralTrussDynamicsSetup::computeSourceFingerprint(const RModel &mo
     validateValues(*this,false);
     validateTopology(*this,model);
     model.getProblemSetup().getStructuralNativeControlSpec().validate(model);
+    model.getProblemSetup().getStructuralPiezoReadoutSetup().validate(model);
     SourceWriter writer;
     const auto &control = model.getProblemSetup().getStructuralNativeControlSpec();
     const bool local = control.source == RStructuralNativeControlSource::LocalV3;
@@ -657,5 +660,8 @@ QString RStructuralTrussDynamicsSetup::computeSourceFingerprint(const RModel &mo
         const QByteArray identity=control.identityBytes();
         writer.blob(identity);
     }
+    const auto &readout=model.getProblemSetup().getStructuralPiezoReadoutSetup();
+    // No empty extension length/tag: preserve all previous empty-source hashes.
+    if (readout.hasNonDefaultData()) writer.blob(readout.identityBytes());
     return writer.digest();
 }

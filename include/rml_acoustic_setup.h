@@ -58,6 +58,10 @@ class RAcousticSetup
         //! Copy constructor.
         RAcousticSetup(const RAcousticSetup &acousticSetup);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RAcousticSetup(RAcousticSetup &&) = default;
+        RAcousticSetup &operator=(RAcousticSetup &&) = default;
+
         //! Destructor.
         ~RAcousticSetup();
 

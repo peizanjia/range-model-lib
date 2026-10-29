@@ -16,6 +16,9 @@
 #include "rml_structural_truss_dynamics_setup.h"
 #include "rml_structural_truss_dynamics_restart_data.h"
 #include "rml_structural_native_control.h"
+#include "rml_structural_piezo_readout_setup.h"
+#include "rml_structural_piezo_layered_setup.h"
+#include "rml_structural_piezo_axial_setup.h"
 
 //! Structural mass-matrix assembly used by transient and modal solvers.
 enum class RMassMatrixType
@@ -59,6 +62,11 @@ class RProblemSetup
         RStructuralTrussDynamicsRestartData structuralTrussDynamicsRestartData;
         RStructuralNativeControlSpec structuralNativeControlSpec;
         RStructuralNativeControlState structuralNativeControlState;
+        RStructuralPiezoReadoutSetup structuralPiezoReadoutSetup;
+        RStructuralPiezoLayeredSetup structuralPiezoLayeredSetup;
+        RStructuralPiezoLayeredRestart structuralPiezoLayeredRestart;
+        RStructuralPiezoAxialSetup structuralPiezoAxialSetup;
+        RStructuralPiezoAxialRestart structuralPiezoAxialRestart;
         //! Solver execution policy.
         RParallelExecutionConfig parallelExecutionConfig;
 
@@ -74,6 +82,10 @@ class RProblemSetup
 
         //! Copy constructor.
         RProblemSetup(const RProblemSetup &problemSetup);
+
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RProblemSetup(RProblemSetup &&) = default;
+        RProblemSetup &operator=(RProblemSetup &&) = default;
 
         //! Destructor.
         ~RProblemSetup();
@@ -176,6 +188,24 @@ class RProblemSetup
         const RParallelExecutionConfig &getParallelExecutionConfig() const;
         RParallelExecutionConfig &getParallelExecutionConfig();
         void setParallelExecutionConfig(const RParallelExecutionConfig &config);
+
+        const RStructuralPiezoReadoutSetup &getStructuralPiezoReadoutSetup() const;
+        RStructuralPiezoReadoutSetup &getStructuralPiezoReadoutSetup();
+        void setStructuralPiezoReadoutSetup(const RStructuralPiezoReadoutSetup &setup);
+
+        const RStructuralPiezoLayeredSetup &getStructuralPiezoLayeredSetup() const;
+        RStructuralPiezoLayeredSetup &getStructuralPiezoLayeredSetup();
+        void setStructuralPiezoLayeredSetup(const RStructuralPiezoLayeredSetup &setup);
+        const RStructuralPiezoLayeredRestart &getStructuralPiezoLayeredRestart() const;
+        RStructuralPiezoLayeredRestart &getStructuralPiezoLayeredRestart();
+        void setStructuralPiezoLayeredRestart(const RStructuralPiezoLayeredRestart &state);
+
+        const RStructuralPiezoAxialSetup &getStructuralPiezoAxialSetup() const;
+        RStructuralPiezoAxialSetup &getStructuralPiezoAxialSetup();
+        void setStructuralPiezoAxialSetup(const RStructuralPiezoAxialSetup &setup);
+        const RStructuralPiezoAxialRestart &getStructuralPiezoAxialRestart() const;
+        RStructuralPiezoAxialRestart &getStructuralPiezoAxialRestart();
+        void setStructuralPiezoAxialRestart(const RStructuralPiezoAxialRestart &state);
 
         //! Convert to printable string.
         QString toString() const;

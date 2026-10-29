@@ -23,6 +23,11 @@ void RProblemSetup::_init(const RProblemSetup *pProblemSetup)
         this->structuralTrussDynamicsRestartData = pProblemSetup->structuralTrussDynamicsRestartData;
         this->structuralNativeControlSpec = pProblemSetup->structuralNativeControlSpec;
         this->structuralNativeControlState = pProblemSetup->structuralNativeControlState;
+        this->structuralPiezoReadoutSetup = pProblemSetup->structuralPiezoReadoutSetup;
+        this->structuralPiezoLayeredSetup = pProblemSetup->structuralPiezoLayeredSetup;
+        this->structuralPiezoLayeredRestart = pProblemSetup->structuralPiezoLayeredRestart;
+        this->structuralPiezoAxialSetup = pProblemSetup->structuralPiezoAxialSetup;
+        this->structuralPiezoAxialRestart = pProblemSetup->structuralPiezoAxialRestart;
         this->parallelExecutionConfig = pProblemSetup->parallelExecutionConfig;
     }
 }
@@ -322,3 +327,30 @@ QString RProblemSetup::toString() const
             + ", Parallel execution: " + this->parallelExecutionConfig.toString()
             + " }";
 }
+
+const RStructuralPiezoReadoutSetup &RProblemSetup::getStructuralPiezoReadoutSetup() const
+{
+    return this->structuralPiezoReadoutSetup;
+}
+RStructuralPiezoReadoutSetup &RProblemSetup::getStructuralPiezoReadoutSetup()
+{
+    return this->structuralPiezoReadoutSetup;
+}
+void RProblemSetup::setStructuralPiezoReadoutSetup(const RStructuralPiezoReadoutSetup &setup)
+{
+    this->structuralPiezoReadoutSetup = setup;
+}
+
+const RStructuralPiezoLayeredSetup &RProblemSetup::getStructuralPiezoLayeredSetup() const { return structuralPiezoLayeredSetup; }
+RStructuralPiezoLayeredSetup &RProblemSetup::getStructuralPiezoLayeredSetup() { return structuralPiezoLayeredSetup; }
+void RProblemSetup::setStructuralPiezoLayeredSetup(const RStructuralPiezoLayeredSetup &setup) { setup.validate(); structuralPiezoLayeredSetup=setup; }
+const RStructuralPiezoLayeredRestart &RProblemSetup::getStructuralPiezoLayeredRestart() const { return structuralPiezoLayeredRestart; }
+RStructuralPiezoLayeredRestart &RProblemSetup::getStructuralPiezoLayeredRestart() { return structuralPiezoLayeredRestart; }
+void RProblemSetup::setStructuralPiezoLayeredRestart(const RStructuralPiezoLayeredRestart &state) { state.validate(); structuralPiezoLayeredRestart=state; }
+
+const RStructuralPiezoAxialSetup &RProblemSetup::getStructuralPiezoAxialSetup() const { return structuralPiezoAxialSetup; }
+RStructuralPiezoAxialSetup &RProblemSetup::getStructuralPiezoAxialSetup() { return structuralPiezoAxialSetup; }
+void RProblemSetup::setStructuralPiezoAxialSetup(const RStructuralPiezoAxialSetup &setup) { setup.validate(); structuralPiezoAxialSetup=setup; }
+const RStructuralPiezoAxialRestart &RProblemSetup::getStructuralPiezoAxialRestart() const { return structuralPiezoAxialRestart; }
+RStructuralPiezoAxialRestart &RProblemSetup::getStructuralPiezoAxialRestart() { return structuralPiezoAxialRestart; }
+void RProblemSetup::setStructuralPiezoAxialRestart(const RStructuralPiezoAxialRestart &state) { state.validate(); structuralPiezoAxialRestart=state; }

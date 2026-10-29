@@ -617,7 +617,7 @@ void TestModelPhysicalIds::currentAsciiAndBinaryFormatsRoundTripIdentifiers()
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     const RModel source = makeGroupModel();
-    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.21"));
+    QCOMPARE(RModel::version.toString(),QStringLiteral("1.3.24"));
 
     for (bool binary : {false,true})
     {

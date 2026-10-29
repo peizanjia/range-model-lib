@@ -31,6 +31,8 @@
 #include "rml_stream_line.h"
 #include "rml_vector_field.h"
 
+class QFile;
+class RFile;
 
 //! Model problem types.
 typedef enum _RModelProblemType
@@ -71,7 +73,7 @@ class RModel : public RProblem, public RResults
         void validatePhysicalIds() const;
 
         //! Read into this instance. Public read() stages into a temporary first.
-        void readInPlace(const QString &fileName);
+        void readInPlace(const QString &fileName, RFile *verifiedFile = nullptr);
 
         //! Add element to element group.
         void addElementToGroup(uint elementID,
@@ -153,11 +155,19 @@ class RModel : public RProblem, public RResults
         bool applyStaticMeshBindingCandidate(const RModel &candidate,
             const std::function<bool(const RModel &)> &validatePrepared, QString *error = nullptr);
 
+        //! Publish a qualified complete layered experiment through nonthrowing storage swaps.
+        //! The native validator authorizes the prepared whole-state identity.
+        bool applyPiezoExperimentCandidate(const RModel &candidate,
+            const std::function<bool(const RModel &)> &validatePrepared, QString *error = nullptr);
+
         //! Update model data.
         void update(const RModel &rModel);
 
         //! Read mesh from the file and replace this model only after successful parsing and validation.
         void read(const QString &fileName);
+
+        //! Read from an already opened, verified regular file handle without reopening its path.
+        void readFromVerifiedFile(const QString &fileName, QFile &verifiedFile);
 
         //! Write mesh to the file.
         //! Return actual filename to which the model was saved.
@@ -1001,11 +1011,11 @@ class RModel : public RProblem, public RResults
 
         //! Read from the ASCII file.
         //! If file is a link target filename is returned.
-        QString readAscii(const QString &fileName);
+        QString readAscii(const QString &fileName, RFile *verifiedFile = nullptr);
 
         //! Read from the binary file.
         //! If file is a link target filename is returned.
-        QString readBinary(const QString &fileName);
+        QString readBinary(const QString &fileName, RFile *verifiedFile = nullptr);
 
         //! Write to the ASCII file.
         void writeAscii(const QString &fileName) const;

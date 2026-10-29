@@ -3,11 +3,26 @@
 #include <rbl_utils.h>
 
 #include <cmath>
+#include <algorithm>
 #include <utility>
 #include <set>
 
 #include "rml_file_io.h"
 #include "rml_problem_setup.h"
+
+namespace
+{
+void readBinaryExact(RFile &inFile, void *destination, qint64 byteCount, const char *field)
+{
+    if (byteCount < 0
+        || inFile.read(static_cast<char*>(destination),byteCount) != byteCount
+        || inFile.error() != RFile::NoError)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,
+                     "Failed to read %s from binary file; data is truncated.",field);
+    }
+}
+}
 
 
 void RFileIO::writeNewLineAscii(RSaveFile &outFile)
@@ -51,11 +66,7 @@ void RFileIO::readAscii(RFile &inFile, bool &bValue)
 
 void RFileIO::readBinary(RFile &inFile, bool &bValue)
 {
-    inFile.read((char*)&bValue,sizeof(bool));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read bool value.");
-    }
+    readBinaryExact(inFile,&bValue,qint64(sizeof(bool)),"bool value");
 } /* RFileIO::readBinary */
 
 
@@ -103,12 +114,7 @@ void RFileIO::readAscii(RFile &inFile, char &cValue)
 
 void RFileIO::readBinary(RFile &inFile, char &cValue)
 {
-
-    inFile.read((char*)&cValue,sizeof(char));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read char value.");
-    }
+    readBinaryExact(inFile,&cValue,qint64(sizeof(char)),"char value");
 } /* RFileIO::readBinary */
 
 
@@ -173,11 +179,7 @@ void RFileIO::readAscii(RFile &inFile, int &iValue)
 
 void RFileIO::readBinary(RFile &inFile, int &iValue)
 {
-    inFile.read((char*)&iValue,sizeof(int));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read int value.");
-    }
+    readBinaryExact(inFile,&iValue,qint64(sizeof(int)),"int value");
 } /* RFileIO::readBinary */
 
 
@@ -225,11 +227,7 @@ void RFileIO::readAscii(RFile &inFile, unsigned int &uValue)
 
 void RFileIO::readBinary(RFile &inFile, unsigned int &uValue)
 {
-    inFile.read((char*)&uValue,sizeof(unsigned int));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read unsigned int value.");
-    }
+    readBinaryExact(inFile,&uValue,qint64(sizeof(unsigned int)),"unsigned int value");
 } /* RFileIO::readBinary */
 
 
@@ -299,11 +297,7 @@ void RFileIO::readAscii(RFile &inFile, double &dValue)
 
 void RFileIO::readBinary(RFile &inFile, double &dValue)
 {
-    inFile.read((char*)&dValue,sizeof(double));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read double value.");
-    }
+    readBinaryExact(inFile,&dValue,qint64(sizeof(double)),"double value");
 } /* RFileIO::readBinary */
 
 
@@ -380,11 +374,7 @@ void RFileIO::readAscii(RFile &inFile, qsizetype &sValue)
 
 void RFileIO::readBinary(RFile &inFile, qsizetype &sValue)
 {
-    inFile.read((char*)&sValue,sizeof(qsizetype));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read qsizetype value.");
-    }
+    readBinaryExact(inFile,&sValue,qint64(sizeof(qsizetype)),"qsizetype value");
 } /* RFileIO::readBinary */
 
 
@@ -535,10 +525,14 @@ void RFileIO::readBinary(RFile &inFile, QString &sValue)
 {
     int stringSize = 0;
     RFileIO::readBinary(inFile,stringSize);
-    QByteArray array = inFile.read(stringSize);
-    if (inFile.error() != RFile::NoError)
+    if (stringSize < 0 || qint64(stringSize) > inFile.bytesAvailable())
     {
-        throw RError(RError::Type::WriteFile,R_ERROR_REF, "Failed to read string value.");
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Invalid or truncated binary string value.");
+    }
+    QByteArray array = inFile.read(stringSize);
+    if (array.size() != stringSize || inFile.error() != RFile::NoError)
+    {
+        throw RError(RError::Type::ReadFile,R_ERROR_REF, "Failed to read string value.");
     }
     sValue.clear();
     sValue.append(array);
@@ -1861,11 +1855,7 @@ void RFileIO::readAscii(RFile &inFile, RVariableApplyType &variableApplyType)
 
 void RFileIO::readBinary(RFile &inFile, RVariableApplyType &variableApplyType)
 {
-    inFile.read((char*)&variableApplyType,sizeof(RVariableApplyType));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RVariableApplyType value.");
-    }
+    readBinaryExact(inFile,&variableApplyType,qint64(sizeof(RVariableApplyType)),"RVariableApplyType value");
 } /* RFileIO::readBinary */
 
 
@@ -2538,11 +2528,7 @@ void RFileIO::readAscii(RFile &inFile, RMaterial::State &state)
 
 void RFileIO::readBinary(RFile &inFile, RMaterial::State &state)
 {
-    inFile.read((char*)&state,sizeof(RMaterial::State));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RMaterial::State value.");
-    }
+    readBinaryExact(inFile,&state,qint64(sizeof(RMaterial::State)),"RMaterial::State value");
 } /* RFileIO::readBinary */
 
 
@@ -2880,11 +2866,8 @@ void RFileIO::readAscii(RFile &inFile, REntityGroupVariableDisplayType &elementG
 
 void RFileIO::readBinary(RFile &inFile, REntityGroupVariableDisplayType &elementGroupVariableDisplayType)
 {
-    inFile.read((char*)&elementGroupVariableDisplayType,sizeof(REntityGroupVariableDisplayType));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RElementGroupVariableDisplayType value.");
-    }
+    readBinaryExact(inFile,&elementGroupVariableDisplayType,
+                    qint64(sizeof(REntityGroupVariableDisplayType)),"REntityGroupVariableDisplayType value");
 } /* RFileIO::readBinary */
 
 
@@ -3975,11 +3958,7 @@ void RFileIO::readAscii(RFile &inFile, RTimeMarchApproximation &timeMarchApproxi
 
 void RFileIO::readBinary(RFile &inFile, RTimeMarchApproximation &timeMarchApproximation)
 {
-    inFile.read((char*)&timeMarchApproximation,sizeof(RTimeMarchApproximation));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RTimeMarchApproximation value.");
-    }
+    readBinaryExact(inFile,&timeMarchApproximation,qint64(sizeof(RTimeMarchApproximation)),"RTimeMarchApproximation value");
 } /* RFileIO::readBinary */
 
 
@@ -4029,11 +4008,7 @@ void RFileIO::readAscii(RFile &inFile, RModalMethod &method)
 
 void RFileIO::readBinary(RFile &inFile, RModalMethod &method)
 {
-    inFile.read((char*)&method,sizeof(RModalMethod));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RModalMethod value.");
-    }
+    readBinaryExact(inFile,&method,qint64(sizeof(RModalMethod)),"RModalMethod value");
 } /* RFileIO::readBinary */
 
 
@@ -4083,11 +4058,7 @@ void RFileIO::readAscii(RFile &inFile, RAcousticAnalysisType &acousticAnalysisTy
 
 void RFileIO::readBinary(RFile &inFile, RAcousticAnalysisType &acousticAnalysisType)
 {
-    inFile.read((char*)&acousticAnalysisType,sizeof(RAcousticAnalysisType));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RAcousticAnalysisType value.");
-    }
+    readBinaryExact(inFile,&acousticAnalysisType,qint64(sizeof(RAcousticAnalysisType)),"RAcousticAnalysisType value");
 } /* RFileIO::readBinary */
 
 
@@ -4651,6 +4622,15 @@ void RFileIO::readAscii(RFile &inFile, RProblemSetup &problemSetup)
         candidate.structuralNativeControlSpec = RStructuralNativeControlSpec();
         candidate.structuralNativeControlState.clear();
     }
+    RFileIO::readAscii(inFile,candidate.structuralPiezoReadoutSetup);
+    RFileIO::readAscii(inFile,candidate.structuralPiezoLayeredSetup);
+    RFileIO::readAscii(inFile,candidate.structuralPiezoLayeredRestart);
+    if(candidate.structuralPiezoLayeredRestart.available && candidate.structuralPiezoLayeredRestart.sourceFingerprint!=candidate.structuralPiezoLayeredSetup.sourceFingerprint)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Layered restart differs from its source.");
+    RFileIO::readAscii(inFile,candidate.structuralPiezoAxialSetup);
+    RFileIO::readAscii(inFile,candidate.structuralPiezoAxialRestart);
+    if(candidate.structuralPiezoAxialRestart.available && (!candidate.structuralPiezoAxialSetup.enabled || candidate.structuralPiezoAxialRestart.sourceFingerprint!=candidate.structuralPiezoAxialSetup.sourceFingerprint))
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Axial restart differs from its enabled source.");
     problemSetup = candidate;
 }
 
@@ -4738,11 +4718,35 @@ void RFileIO::readBinary(RFile &inFile, RProblemSetup &problemSetup)
         candidate.structuralNativeControlSpec = RStructuralNativeControlSpec();
         candidate.structuralNativeControlState.clear();
     }
+    RFileIO::readBinary(inFile,candidate.structuralPiezoReadoutSetup);
+    RFileIO::readBinary(inFile,candidate.structuralPiezoLayeredSetup);
+    RFileIO::readBinary(inFile,candidate.structuralPiezoLayeredRestart);
+    if(candidate.structuralPiezoLayeredRestart.available && candidate.structuralPiezoLayeredRestart.sourceFingerprint!=candidate.structuralPiezoLayeredSetup.sourceFingerprint)
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Layered restart differs from its source.");
+    RFileIO::readBinary(inFile,candidate.structuralPiezoAxialSetup);
+    RFileIO::readBinary(inFile,candidate.structuralPiezoAxialRestart);
+    if(candidate.structuralPiezoAxialRestart.available && (!candidate.structuralPiezoAxialSetup.enabled || candidate.structuralPiezoAxialRestart.sourceFingerprint!=candidate.structuralPiezoAxialSetup.sourceFingerprint))
+        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Axial restart differs from its enabled source.");
     problemSetup = candidate;
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, bool addNewLine)
 {
+    problemSetup.structuralPiezoAxialSetup.validate();
+    problemSetup.structuralPiezoAxialRestart.validate();
+    if(outFile.getVersion()<=RVersion(1,3,23) && (problemSetup.structuralPiezoAxialSetup.hasNonDefaultData() || problemSetup.structuralPiezoAxialRestart.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Axial piezo experiment requires model format 1.3.24.");
+    if(problemSetup.structuralPiezoAxialRestart.available && (!problemSetup.structuralPiezoAxialSetup.enabled || problemSetup.structuralPiezoAxialRestart.sourceFingerprint!=problemSetup.structuralPiezoAxialSetup.sourceFingerprint))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Axial restart differs from its enabled source.");
+    problemSetup.structuralPiezoLayeredSetup.validate();
+    problemSetup.structuralPiezoLayeredRestart.validate();
+    if(outFile.getVersion()<=RVersion(1,3,22) && (problemSetup.structuralPiezoLayeredSetup.hasNonDefaultData() || problemSetup.structuralPiezoLayeredRestart.available))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Layered piezo source requires model format 1.3.23.");
+    if(problemSetup.structuralPiezoLayeredRestart.available && problemSetup.structuralPiezoLayeredRestart.sourceFingerprint!=problemSetup.structuralPiezoLayeredSetup.sourceFingerprint)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Layered restart differs from its source.");
+    problemSetup.structuralPiezoReadoutSetup.validate();
+    if (outFile.getVersion() <= RVersion(1,3,21) && problemSetup.structuralPiezoReadoutSetup.hasNonDefaultData())
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Piezo readout source requires model format 1.3.22.");
     problemSetup.structuralNativeControlSpec.validate();
     problemSetup.structuralNativeControlState.validate(problemSetup.structuralNativeControlSpec);
     if (problemSetup.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
@@ -4821,10 +4825,35 @@ void RFileIO::writeAscii(RSaveFile &outFile, const RProblemSetup &problemSetup, 
     RFileIO::writeAscii(outFile,problemSetup.structuralNativeControlSpec,addNewLine);
     if (!addNewLine && outFile.getVersion() > RVersion(1,3,20)) RFileIO::writeAscii(outFile,' ',false);
     RFileIO::writeAscii(outFile,problemSetup.structuralNativeControlState,addNewLine);
+    if (!addNewLine && outFile.getVersion() > RVersion(1,3,21)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoReadoutSetup,addNewLine);
+    if(!addNewLine && outFile.getVersion()>RVersion(1,3,22)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoLayeredSetup,addNewLine);
+    if(!addNewLine && outFile.getVersion()>RVersion(1,3,22)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoLayeredRestart,addNewLine);
+    if(!addNewLine && outFile.getVersion()>RVersion(1,3,23)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoAxialSetup,addNewLine);
+    if(!addNewLine && outFile.getVersion()>RVersion(1,3,23)) RFileIO::writeAscii(outFile,' ',false);
+    RFileIO::writeAscii(outFile,problemSetup.structuralPiezoAxialRestart,addNewLine);
 }
 
 void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
 {
+    problemSetup.structuralPiezoAxialSetup.validate();
+    problemSetup.structuralPiezoAxialRestart.validate();
+    if(outFile.getVersion()<=RVersion(1,3,23) && (problemSetup.structuralPiezoAxialSetup.hasNonDefaultData() || problemSetup.structuralPiezoAxialRestart.hasNonDefaultData()))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Axial piezo experiment requires model format 1.3.24.");
+    if(problemSetup.structuralPiezoAxialRestart.available && (!problemSetup.structuralPiezoAxialSetup.enabled || problemSetup.structuralPiezoAxialRestart.sourceFingerprint!=problemSetup.structuralPiezoAxialSetup.sourceFingerprint))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Axial restart differs from its enabled source.");
+    problemSetup.structuralPiezoLayeredSetup.validate();
+    problemSetup.structuralPiezoLayeredRestart.validate();
+    if(outFile.getVersion()<=RVersion(1,3,22) && (problemSetup.structuralPiezoLayeredSetup.hasNonDefaultData() || problemSetup.structuralPiezoLayeredRestart.available))
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Layered piezo source requires model format 1.3.23.");
+    if(problemSetup.structuralPiezoLayeredRestart.available && problemSetup.structuralPiezoLayeredRestart.sourceFingerprint!=problemSetup.structuralPiezoLayeredSetup.sourceFingerprint)
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Layered restart differs from its source.");
+    problemSetup.structuralPiezoReadoutSetup.validate();
+    if (outFile.getVersion() <= RVersion(1,3,21) && problemSetup.structuralPiezoReadoutSetup.hasNonDefaultData())
+        throw RError(RError::Type::WriteFile,R_ERROR_REF,"Piezo readout source requires model format 1.3.22.");
     problemSetup.structuralNativeControlSpec.validate();
     problemSetup.structuralNativeControlState.validate(problemSetup.structuralNativeControlSpec);
     if (problemSetup.structuralNativeControlSpec.source == RStructuralNativeControlSource::LocalV3
@@ -4859,6 +4888,11 @@ void RFileIO::writeBinary(RSaveFile &outFile, const RProblemSetup &problemSetup)
     RFileIO::writeBinary(outFile,problemSetup.structuralTrussDynamicsRestartData);
     RFileIO::writeBinary(outFile,problemSetup.structuralNativeControlSpec);
     RFileIO::writeBinary(outFile,problemSetup.structuralNativeControlState);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoReadoutSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoLayeredSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoLayeredRestart);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoAxialSetup);
+    RFileIO::writeBinary(outFile,problemSetup.structuralPiezoAxialRestart);
 }
 
 
@@ -6491,11 +6525,7 @@ void RFileIO::readAscii(RFile &inFile, RRadiationResolution &radiationResolution
 
 void RFileIO::readBinary(RFile &inFile, RRadiationResolution &radiationResolution)
 {
-    inFile.read((char*)&radiationResolution,sizeof(RRadiationResolution));
-    if (inFile.error() != RFile::NoError)
-    {
-        throw RError(RError::Type::ReadFile,R_ERROR_REF,"Failed to read RRadiationResolution value.");
-    }
+    readBinaryExact(inFile,&radiationResolution,qint64(sizeof(RRadiationResolution)),"RRadiationResolution value");
 }
 
 void RFileIO::writeAscii(RSaveFile &outFile, const RRadiationResolution &radiationResolution, bool addNewLine)
@@ -7724,7 +7754,7 @@ template<class IO> void nativeSpecIO(IO &io,RStructuralNativeControlSpec &s,bool
     io(s.providerId); io(s.providerRevision); io(s.implementationSha256); io(s.dependencyEnvironmentManifest); io(s.dependencyEnvironmentSha256);
     io(s.controlEveryFESteps); io(s.samplePhase); io(s.deterministicSeed);
     nativeVector(io,s.sensors,reading,[&](auto &v) {
-        io(v.sensorId); nativeEnum(io,v.quantity,reading,127); io(v.physicalNodeId); io(v.physicalMemberId); io(v.portId); io(v.axis);
+        io(v.sensorId); nativeEnum(io,v.quantity,reading,511); io(v.physicalNodeId); io(v.physicalMemberId); io(v.portId); io(v.axis);
     });
     nativeVector(io,s.actions,reading,[&](auto &v) {
         io(v.actionId); nativeEnum(io,v.quantity,reading,51); io(v.physicalNodeId); io(v.physicalMemberId); io(v.portId); io(v.axis);
@@ -7740,14 +7770,29 @@ template<class IO> void nativeStateIO(IO &io,RStructuralNativeControlState &s,bo
     io(s.available); io(s.schemaVersion); io(s.sourceFingerprint); io(s.providerRevision); io(s.completedFE); io(s.completedControlTicks); io(s.fePhase); io(s.samplePhase);
     io(s.lastControllerInputState); io(s.controllerState);
     auto &f=s.lastFrame; io(f.completedFE); io(f.controlTick); io(f.fePhase); io(f.samplePhase); io(f.sampleTime); io(f.nextFETime); io(f.nextControlTime); io(f.physicalDt);
-    nativeVector(io,f.samples,reading,[&](auto &v) { io(v.sensorId); nativeEnum(io,v.quantity,reading,127); io(v.value); });
+    nativeVector(io,f.samples,reading,[&](auto &v) { io(v.sensorId); nativeEnum(io,v.quantity,reading,511); io(v.value); });
     nativeVector(io,s.lastActions,reading,[&](auto &v) { io(v.actionId); nativeEnum(io,v.quantity,reading,51); io(v.previousApplied); io(v.requested); io(v.conditioned); io(v.applied); io(v.limitFlags); });
     nativeVector(io,s.heldValues,reading,[&](double &v) { io(v); });
     nativeVector(io,s.lastAppliedValues,reading,[&](double &v) { io(v); });
 }
+bool nativeUsesPiezoReadout(const RStructuralNativeControlSpec &data)
+{
+    return std::any_of(data.sensors.begin(),data.sensors.end(),[](const auto &s) { return uint(s.quantity)>=7; });
+}
+bool nativeUsesPiezoReadout(const RStructuralNativeControlState &data)
+{
+    return std::any_of(data.lastFrame.samples.begin(),data.lastFrame.samples.end(),[](const auto &s) { return uint(s.quantity)>=7; });
+}
+template<class T> void nativeReadoutVersion(const RVersion &version,const T &data,bool reading)
+{
+    if(version<=RVersion(1,3,21) && nativeUsesPiezoReadout(data))
+        throw RError(reading ? RError::Type::ReadFile : RError::Type::WriteFile,R_ERROR_REF,
+                     "Classified native piezo measurements require model format 1.3.22.");
+}
 template<class T> bool nativeWriteVersion(RSaveFile &file,const T &data)
 {
     data.validate();
+    nativeReadoutVersion(file.getVersion(),data,false);
     if(file.getVersion()>RVersion(1,3,20)) return true;
     if(data.hasNonDefaultData()) throw RError(RError::Type::WriteFile,R_ERROR_REF,"Native control v3 requires model format 1.3.21.");
     return false;
@@ -7759,7 +7804,7 @@ void RFileIO::readAscii(RFile &inFile,RStructuralNativeControlSpec &data)
     RStructuralNativeControlSpec candidate;
     if(inFile.getVersion()>RVersion(1,3,20)) {
         auto read=[&](auto &value) { nativeReadAscii(inFile,value); };
-        nativeSpecIO(read,candidate,true); candidate.validate();
+        nativeSpecIO(read,candidate,true); candidate.validate(); nativeReadoutVersion(inFile.getVersion(),candidate,true);
     }
     data=std::move(candidate);
 }
@@ -7769,7 +7814,7 @@ void RFileIO::readBinary(RFile &inFile,RStructuralNativeControlSpec &data)
     RStructuralNativeControlSpec candidate;
     if(inFile.getVersion()>RVersion(1,3,20)) {
         auto read=[&](auto &value) { nativeReadBinary(inFile,value); };
-        nativeSpecIO(read,candidate,true); candidate.validate();
+        nativeSpecIO(read,candidate,true); candidate.validate(); nativeReadoutVersion(inFile.getVersion(),candidate,true);
     }
     data=std::move(candidate);
 }
@@ -7799,7 +7844,7 @@ void RFileIO::readAscii(RFile &inFile,RStructuralNativeControlState &data)
     RStructuralNativeControlState candidate;
     if(inFile.getVersion()>RVersion(1,3,20)) {
         auto read=[&](auto &value) { nativeReadAscii(inFile,value); };
-        nativeStateIO(read,candidate,true); candidate.validate();
+        nativeStateIO(read,candidate,true); candidate.validate(); nativeReadoutVersion(inFile.getVersion(),candidate,true);
     }
     data=std::move(candidate);
 }
@@ -7809,7 +7854,7 @@ void RFileIO::readBinary(RFile &inFile,RStructuralNativeControlState &data)
     RStructuralNativeControlState candidate;
     if(inFile.getVersion()>RVersion(1,3,20)) {
         auto read=[&](auto &value) { nativeReadBinary(inFile,value); };
-        nativeStateIO(read,candidate,true); candidate.validate();
+        nativeStateIO(read,candidate,true); candidate.validate(); nativeReadoutVersion(inFile.getVersion(),candidate,true);
     }
     data=std::move(candidate);
 }
@@ -7833,3 +7878,252 @@ void RFileIO::writeBinary(RSaveFile &outFile,const RStructuralNativeControlState
     auto write=[&](auto &value) { nativeWriteBinary(outFile,value); };
     nativeStateIO(write,candidate,false);
 }
+
+/*********************************************************************
+ * Version 1.3.22 pure piezo readout/workpoint source persistence       *
+ *********************************************************************/
+namespace {
+template<class IO,class T,class Visit> void piezoReadoutVector(IO &io,std::vector<T> &values,bool reading,Visit visit)
+{
+    uint size=uint(values.size()); io(size);
+    if(size>1000000u) trussReadError();
+    if(reading) values.resize(size);
+    for(auto &value:values) visit(value);
+}
+template<class IO> void piezoReadoutIO(IO &io,RStructuralPiezoReadoutSetup &s,bool reading)
+{
+    piezoReadoutVector(io,s.ports,reading,[&](auto &p) {
+        io(p.portId); nativeEnum(io,p.role,reading,7); nativeEnum(io,p.readout,reading,31);
+        io(p.Cf); io(p.amplifierPolarity); io(p.Qref); io(p.VoutBias);
+    });
+    io(s.workpoint.available);
+    piezoReadoutVector(io,s.workpoint.nodes,reading,[&](auto &n) {
+        io(n.physicalNodeId); for(double &v:n.q0) io(v); for(double &v:n.f0) io(v);
+    });
+    piezoReadoutVector(io,s.workpoint.ports,reading,[&](auto &p) { io(p.portId); io(p.V0); io(p.Q0); });
+}
+bool piezoReadoutWriteVersion(RSaveFile &file,const RStructuralPiezoReadoutSetup &s)
+{
+    if(file.getVersion()<=RVersion(1,3,21)) {
+        if(s.hasNonDefaultData()) throw RError(RError::Type::WriteFile,R_ERROR_REF,"Piezo readout source requires model format 1.3.22.");
+        return false;
+    }
+    s.validate(); return true;
+}
+}
+void RFileIO::readAscii(RFile &inFile,RStructuralPiezoReadoutSetup &data)
+{
+    RStructuralPiezoReadoutSetup candidate;
+    if(inFile.getVersion()>RVersion(1,3,21)) {
+        auto read=[&](auto &value) { nativeReadAscii(inFile,value); };
+        piezoReadoutIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+void RFileIO::readBinary(RFile &inFile,RStructuralPiezoReadoutSetup &data)
+{
+    RStructuralPiezoReadoutSetup candidate;
+    if(inFile.getVersion()>RVersion(1,3,21)) {
+        auto read=[&](auto &value) { nativeReadBinary(inFile,value); };
+        piezoReadoutIO(read,candidate,true); candidate.validate();
+    }
+    data=std::move(candidate);
+}
+void RFileIO::writeAscii(RSaveFile &outFile,const RStructuralPiezoReadoutSetup &data,bool addNewLine)
+{
+    if(!piezoReadoutWriteVersion(outFile,data)) return;
+    RStructuralPiezoReadoutSetup candidate=data;
+    const int precision=outFile.getTextStream().realNumberPrecision();
+    outFile.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
+    auto write=[&](auto &value) { nativeWriteAscii(outFile,value,addNewLine); if(!addNewLine) RFileIO::writeAscii(outFile,' ',false); };
+    try { piezoReadoutIO(write,candidate,false); }
+    catch(...) { outFile.getTextStream().setRealNumberPrecision(precision); throw; }
+    outFile.getTextStream().setRealNumberPrecision(precision);
+}
+void RFileIO::writeBinary(RSaveFile &outFile,const RStructuralPiezoReadoutSetup &data)
+{
+    if(!piezoReadoutWriteVersion(outFile,data)) return;
+    RStructuralPiezoReadoutSetup candidate=data;
+    auto write=[&](auto &value) { nativeWriteBinary(outFile,value); };
+    piezoReadoutIO(write,candidate,false);
+}
+
+/*********************************************************************
+ * Version 1.3.23 typed layered native source and separate restart      *
+ *********************************************************************/
+namespace {
+template<class T> void layeredReadAscii(RFile &f,T &v) { nativeReadAscii(f,v); }
+template<class T> void layeredReadBinary(RFile &f,T &v) { nativeReadBinary(f,v); }
+void layeredText(const QByteArray &b,QString &v)
+{
+    if(b.size()>65536) trussReadError(); const QString candidate=QString::fromUtf8(b);
+    if(candidate.toUtf8()!=b) trussReadError(); v=candidate;
+}
+void layeredReadAscii(RFile &f,QString &v) { QByteArray b; nativeReadAscii(f,b); layeredText(b,v); }
+void layeredReadBinary(RFile &f,QString &v) { QByteArray b; nativeReadBinary(f,b); layeredText(b,v); }
+template<class T> void layeredWriteAscii(RSaveFile &f,const T &v,bool newline) { nativeWriteAscii(f,v,newline); }
+template<class T> void layeredWriteBinary(RSaveFile &f,const T &v) { nativeWriteBinary(f,v); }
+void layeredWriteAscii(RSaveFile &f,const QString &v,bool newline) { nativeWriteAscii(f,v.toUtf8(),newline); }
+void layeredWriteBinary(RSaveFile &f,const QString &v) { nativeWriteBinary(f,v.toUtf8()); }
+template<class IO> void layeredIO(IO &io,RStructuralPiezoLayeredSetup &s,bool reading)
+{
+    io(s.enabled); nativeEnum(io,s.family,reading,7); io(s.sourceFingerprint);
+    for(auto *a:{&s.frame.origin,&s.frame.ex,&s.frame.ey,&s.frame.ez}) for(double &x:*a) io(x);
+    piezoReadoutVector(io,s.materials,reading,[&](auto &m) {
+        io(m.materialId); nativeEnum(io,m.form,reading,3);
+        for(double &x:m.elasticityOrCompliance) io(x); for(double &x:m.coupling) io(x); for(double &x:m.permittivity) io(x);
+        io(m.density); io(m.piezoelectric); nativeEnum(io,m.sourceKind,reading,7); io(m.sourceId); io(m.sourceSha256); io(m.notes);
+    });
+    piezoReadoutVector(io,s.members,reading,[&](auto &m) {
+        io(m.physicalElementId); piezoReadoutVector(io,m.layers,reading,[&](auto &l) {
+            io(l.materialId); io(l.lowerZ); io(l.upperZ); io(l.width); io(l.portId); io(l.polarity); for(double &x:l.coverage) io(x);
+        });
+    });
+    piezoReadoutVector(io,s.ports,reading,[&](auto &v) {
+        auto &p=v.readout; io(p.portId); nativeEnum(io,p.role,reading,7); nativeEnum(io,p.readout,reading,31);
+        io(p.Cf); io(p.amplifierPolarity); io(p.Qref); io(p.VoutBias); io(v.initialValue);
+    });
+    piezoReadoutVector(io,s.supports,reading,[&](auto &v) { io(v.physicalNodeId); nativeEnum(io,v.dof,reading,63); io(v.value); });
+    for(auto *fields:{&s.backgroundForces,&s.initialDisplacements,&s.initialVelocities})
+        piezoReadoutVector(io,*fields,reading,[&](auto &v) { io(v.physicalNodeId); for(double &x:v.values) io(x); });
+    io(s.workpoint.available);
+    piezoReadoutVector(io,s.workpoint.nodes,reading,[&](auto &v) { io(v.physicalNodeId); for(double &x:v.q0) io(x); for(double &x:v.f0) io(x); });
+    piezoReadoutVector(io,s.workpoint.ports,reading,[&](auto &v) { io(v.portId); io(v.V0); io(v.Q0); });
+    auto &d=s.damping; nativeEnum(io,d.kind,reading,63); io(d.rayleighAlpha); io(d.rayleighBeta); io(d.uniformRatio);
+    piezoReadoutVector(io,d.ratios,reading,[&](double &x) { io(x); }); piezoReadoutVector(io,d.clusterEnds,reading,[&](uint &x) { io(x); });
+    io(d.importedDimension); piezoReadoutVector(io,d.importedMatrix,reading,[&](double &x) { io(x); }); io(d.sourceId); io(d.sourceSha256);
+    io(s.excitationConfiguration); io(s.controllerConfiguration); io(s.designConfiguration);
+}
+template<class IO> void layeredIO(IO &io,RStructuralPiezoLayeredRestart &s,bool)
+{ io(s.available); io(s.sourceFingerprint); io(s.stateBytes); }
+bool layeredHasData(const RStructuralPiezoLayeredSetup &s) { return s.hasNonDefaultData(); }
+bool layeredHasData(const RStructuralPiezoLayeredRestart &s) { return s.available || !s.sourceFingerprint.isEmpty() || !s.stateBytes.isEmpty(); }
+template<class T> bool layeredWriteVersion(RSaveFile &f,const T &s)
+{
+    s.validate(); if(f.getVersion()>RVersion(1,3,22)) return true;
+    if(layeredHasData(s)) throw RError(RError::Type::WriteFile,R_ERROR_REF,"Layered piezo source requires model format 1.3.23.");
+    return false;
+}
+}
+void RFileIO::readAscii(RFile &file,RStructuralPiezoLayeredSetup &data)
+{
+    RStructuralPiezoLayeredSetup candidate;
+    if(file.getVersion()>RVersion(1,3,22)) { auto read=[&](auto &v) { layeredReadAscii(file,v); }; layeredIO(read,candidate,true); candidate.validate(); }
+    data=std::move(candidate);
+}
+void RFileIO::readBinary(RFile &file,RStructuralPiezoLayeredSetup &data)
+{
+    RStructuralPiezoLayeredSetup candidate;
+    if(file.getVersion()>RVersion(1,3,22)) { auto read=[&](auto &v) { layeredReadBinary(file,v); }; layeredIO(read,candidate,true); candidate.validate(); }
+    data=std::move(candidate);
+}
+void RFileIO::writeAscii(RSaveFile &file,const RStructuralPiezoLayeredSetup &data,bool newline)
+{
+    if(!layeredWriteVersion(file,data)) return; auto candidate=data;
+    const int precision=file.getTextStream().realNumberPrecision(); file.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
+    auto write=[&](auto &v) { layeredWriteAscii(file,v,newline); if(!newline) RFileIO::writeAscii(file,' ',false); };
+    try { layeredIO(write,candidate,false); } catch(...) { file.getTextStream().setRealNumberPrecision(precision); throw; }
+    file.getTextStream().setRealNumberPrecision(precision);
+}
+void RFileIO::writeBinary(RSaveFile &file,const RStructuralPiezoLayeredSetup &data)
+{
+    if(!layeredWriteVersion(file,data)) return; auto candidate=data;
+    auto write=[&](auto &v) { layeredWriteBinary(file,v); }; layeredIO(write,candidate,false);
+}
+void RFileIO::readAscii(RFile &file,RStructuralPiezoLayeredRestart &data)
+{
+    RStructuralPiezoLayeredRestart candidate;
+    if(file.getVersion()>RVersion(1,3,22)) { auto read=[&](auto &v) { layeredReadAscii(file,v); }; layeredIO(read,candidate,true); candidate.validate(); }
+    data=std::move(candidate);
+}
+void RFileIO::readBinary(RFile &file,RStructuralPiezoLayeredRestart &data)
+{
+    RStructuralPiezoLayeredRestart candidate;
+    if(file.getVersion()>RVersion(1,3,22)) { auto read=[&](auto &v) { layeredReadBinary(file,v); }; layeredIO(read,candidate,true); candidate.validate(); }
+    data=std::move(candidate);
+}
+void RFileIO::writeAscii(RSaveFile &file,const RStructuralPiezoLayeredRestart &data,bool newline)
+{
+    if(!layeredWriteVersion(file,data)) return; auto candidate=data;
+    const int precision=file.getTextStream().realNumberPrecision(); file.getTextStream().setRealNumberPrecision(std::numeric_limits<double>::max_digits10);
+    auto write=[&](auto &v) { layeredWriteAscii(file,v,newline); if(!newline) RFileIO::writeAscii(file,' ',false); };
+    try { layeredIO(write,candidate,false); } catch(...) { file.getTextStream().setRealNumberPrecision(precision); throw; }
+    file.getTextStream().setRealNumberPrecision(precision);
+}
+void RFileIO::writeBinary(RSaveFile &file,const RStructuralPiezoLayeredRestart &data)
+{
+    if(!layeredWriteVersion(file,data)) return; auto candidate=data;
+    auto write=[&](auto &v) { layeredWriteBinary(file,v); }; layeredIO(write,candidate,false);
+}
+
+/*********************************************************************
+ * Version 1.3.24 whole axial experiment and sealed opaque restart     *
+ *********************************************************************/
+namespace {
+void axialReadAscii(RFile &file,QByteArray &value,uint bound)
+{
+    auto &stream=file.getTextStream(); stream.skipWhiteSpace(); QChar c; stream >> c;
+    if(stream.status()!=QTextStream::Ok || c!='"') trussReadError();
+    QByteArray hex;
+    while(true) {
+        stream >> c; if(stream.status()!=QTextStream::Ok) trussReadError();
+        if(c=='"') break;
+        if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')) || quint64(hex.size())>=quint64(bound)*2) trussReadError();
+        hex.append(char(c.unicode()));
+    }
+    if(hex.size()%2) trussReadError(); value=QByteArray::fromHex(hex);
+}
+void axialReadBinary(RFile &file,QByteArray &value,uint bound)
+{
+    uint size=0; nativeReadBinary(file,size);
+    if(size>bound || file.bytesAvailable()<qint64(size)) trussReadError();
+    value=file.read(size); if(value.size()!=qint64(size) || file.error()!=RFile::NoError) trussReadError();
+}
+void axialReadAscii(RFile &file,QString &value,uint bound)
+{ QByteArray bytes; axialReadAscii(file,bytes,bound); layeredText(bytes,value); }
+void axialReadBinary(RFile &file,QString &value,uint bound)
+{ QByteArray bytes; axialReadBinary(file,bytes,bound); layeredText(bytes,value); }
+template<class T> void axialReadAscii(RFile &file,T &value,uint) { nativeReadAscii(file,value); }
+template<class T> void axialReadBinary(RFile &file,T &value,uint) { nativeReadBinary(file,value); }
+template<class IO> void axialIO(IO &io,RStructuralPiezoAxialSetup &s)
+{ io(s.enabled,0); io(s.sourceFingerprint,64); io(s.recipeConfiguration,8u*1024u*1024u); }
+template<class IO> void axialIO(IO &io,RStructuralPiezoAxialRestart &s)
+{ io(s.available,0); io(s.sourceFingerprint,64); io(s.runtimeState,32u*1024u*1024u); }
+template<class T> bool axialWriteVersion(RSaveFile &file,const T &s)
+{
+    s.validate(); if(file.getVersion()>RVersion(1,3,23)) return true;
+    if(s.hasNonDefaultData()) throw RError(RError::Type::WriteFile,R_ERROR_REF,"Axial piezo experiment requires model format 1.3.24.");
+    return false;
+}
+template<class T> void axialReadAsciiRecord(RFile &file,T &data)
+{
+    T candidate;
+    if(file.getVersion()>RVersion(1,3,23)) { auto read=[&](auto &v,uint bound) { axialReadAscii(file,v,bound); }; axialIO(read,candidate); candidate.validate(); }
+    data=std::move(candidate);
+}
+template<class T> void axialReadBinaryRecord(RFile &file,T &data)
+{
+    T candidate;
+    if(file.getVersion()>RVersion(1,3,23)) { auto read=[&](auto &v,uint bound) { axialReadBinary(file,v,bound); }; axialIO(read,candidate); candidate.validate(); }
+    data=std::move(candidate);
+}
+template<class T> void axialWriteAsciiRecord(RSaveFile &file,const T &data,bool newline)
+{
+    if(!axialWriteVersion(file,data)) return; auto candidate=data;
+    auto write=[&](auto &v,uint) { layeredWriteAscii(file,v,newline); if(!newline) RFileIO::writeAscii(file,' ',false); };
+    axialIO(write,candidate);
+}
+template<class T> void axialWriteBinaryRecord(RSaveFile &file,const T &data)
+{
+    if(!axialWriteVersion(file,data)) return; auto candidate=data;
+    auto write=[&](auto &v,uint) { layeredWriteBinary(file,v); }; axialIO(write,candidate);
+}
+}
+void RFileIO::readAscii(RFile &file,RStructuralPiezoAxialSetup &data) { axialReadAsciiRecord(file,data); }
+void RFileIO::readBinary(RFile &file,RStructuralPiezoAxialSetup &data) { axialReadBinaryRecord(file,data); }
+void RFileIO::writeAscii(RSaveFile &file,const RStructuralPiezoAxialSetup &data,bool newline) { axialWriteAsciiRecord(file,data,newline); }
+void RFileIO::writeBinary(RSaveFile &file,const RStructuralPiezoAxialSetup &data) { axialWriteBinaryRecord(file,data); }
+void RFileIO::readAscii(RFile &file,RStructuralPiezoAxialRestart &data) { axialReadAsciiRecord(file,data); }
+void RFileIO::readBinary(RFile &file,RStructuralPiezoAxialRestart &data) { axialReadBinaryRecord(file,data); }
+void RFileIO::writeAscii(RSaveFile &file,const RStructuralPiezoAxialRestart &data,bool newline) { axialWriteAsciiRecord(file,data,newline); }
+void RFileIO::writeBinary(RSaveFile &file,const RStructuralPiezoAxialRestart &data) { axialWriteBinaryRecord(file,data); }

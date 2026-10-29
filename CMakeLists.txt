@@ -63,6 +63,8 @@ qt_add_library(range-model-lib
         src/rml_structural_dynamics_setup.cpp
         src/rml_structural_cable_setup.cpp
         src/rml_structural_piezo_setup.cpp
+        src/rml_structural_piezo_readout_setup.cpp
+        src/rml_structural_piezo_layered_setup.cpp
         src/rml_structural_native_control.cpp
         src/rml_structural_truss_dynamics_setup.cpp
         src/rml_structural_truss_dynamics_restart_data.cpp
@@ -153,6 +155,8 @@ qt_add_library(range-model-lib
         include/rml_structural_dynamics_setup.h
         include/rml_structural_cable_setup.h
         include/rml_structural_piezo_setup.h
+        include/rml_structural_piezo_readout_setup.h
+        include/rml_structural_piezo_layered_setup.h
         include/rml_structural_native_control.h
         include/rml_structural_truss_dynamics_setup.h
         include/rml_structural_truss_dynamics_restart_data.h
@@ -184,12 +188,13 @@ qt_add_library(range-model-lib
 )
 
 # Compiler definitions
+target_sources(range-model-lib PRIVATE src/rml_structural_piezo_axial_setup.cpp include/rml_structural_piezo_axial_setup.h)
 target_compile_definitions(range-model-lib
     PRIVATE
         FILE_MAJOR_VERSION=1
         FILE_MINOR_VERSION=3
         FILE_RELEASE_VERSION=16
-        MODEL_FILE_RELEASE_VERSION=21
+        MODEL_FILE_RELEASE_VERSION=24
         TETLIBRARY
 )
 

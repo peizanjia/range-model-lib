@@ -36,7 +36,7 @@ void id(const QString &value)
         else require(!c.isLowSurrogate(),"Invalid native control UTF-16.");
     }
 }
-bool measurement(RStructuralNativeMeasurementQuantity q) { return uint(q)<=6; }
+bool measurement(RStructuralNativeMeasurementQuantity q) { return uint(q)<=8; }
 bool action(RStructuralNativeActionQuantity q) { return q==RStructuralNativeActionQuantity::Force || q==RStructuralNativeActionQuantity::CableReferenceLength || q==RStructuralNativeActionQuantity::Voltage || q==RStructuralNativeActionQuantity::Charge; }
 void target(uint node,uint member,const QString &port,uint axis,uint kind)
 {
@@ -44,7 +44,7 @@ void target(uint node,uint member,const QString &port,uint axis,uint kind)
     else if(kind==1) require(node==0 && member!=0 && member!=RConstants::eod && port.isEmpty() && axis==0,"Invalid native control member target.");
     else { require(node==0 && member==0 && axis==0,"Invalid native control port target."); id(port); }
 }
-uint targetKind(RStructuralNativeMeasurementQuantity q) { return q==RStructuralNativeMeasurementQuantity::MemberAxialForce ? 1 : (q==RStructuralNativeMeasurementQuantity::PortVoltage || q==RStructuralNativeMeasurementQuantity::PortCharge ? 2 : 0); }
+uint targetKind(RStructuralNativeMeasurementQuantity q) { return q==RStructuralNativeMeasurementQuantity::MemberAxialForce ? 1 : (q==RStructuralNativeMeasurementQuantity::PortVoltage || q==RStructuralNativeMeasurementQuantity::PortCharge || q==RStructuralNativeMeasurementQuantity::PiezoReadoutVoltage || q==RStructuralNativeMeasurementQuantity::PiezoReadoutCharge ? 2 : 0); }
 uint targetKind(RStructuralNativeActionQuantity q) { return q==RStructuralNativeActionQuantity::Force ? 0 : (q==RStructuralNativeActionQuantity::CableReferenceLength ? 1 : 2); }
 struct Writer {
     QByteArray bytes;
@@ -76,8 +76,8 @@ QString rStructuralNativeMeasurementUnit(RStructuralNativeMeasurementQuantity q)
     case RStructuralNativeMeasurementQuantity::NodeVelocity:return "m/s";
     case RStructuralNativeMeasurementQuantity::NodeAcceleration:return "m/s^2";
     case RStructuralNativeMeasurementQuantity::MemberAxialForce:case RStructuralNativeMeasurementQuantity::SupportReaction:return "N";
-    case RStructuralNativeMeasurementQuantity::PortVoltage:return "V";
-    case RStructuralNativeMeasurementQuantity::PortCharge:return "C";
+    case RStructuralNativeMeasurementQuantity::PortVoltage:case RStructuralNativeMeasurementQuantity::PiezoReadoutVoltage:return "V";
+    case RStructuralNativeMeasurementQuantity::PortCharge:case RStructuralNativeMeasurementQuantity::PiezoReadoutCharge:return "C";
     } require(false,"Unsupported native control measurement quantity."); return {};
 }
 QString rStructuralNativeActionUnit(RStructuralNativeActionQuantity q)
@@ -153,7 +153,19 @@ void RStructuralNativeControlSpec::validate(const RModel &model) const
     const auto check=[&](uint node,uint member,const QString &port,uint kind) {
         require(kind==0 ? nodes.count(node)>0 : (kind==1 ? members.count(member)>0 && physicalMembers.count(member)>0 : ports.count(port)>0 && physicalMembers.count(ports.at(port)->physicalElementId)>0),"Native control target is missing from the physical source.");
     };
-    for(const auto &s:sensors) check(s.physicalNodeId,s.physicalMemberId,s.portId,targetKind(s.quantity));
+    for(const auto &s:sensors) {
+        check(s.physicalNodeId,s.physicalMemberId,s.portId,targetKind(s.quantity));
+        if(uint(s.quantity)>=7) {
+            const auto &readout=model.getProblemSetup().getStructuralPiezoReadoutSetup();
+            readout.validate(model);
+            const auto found=std::find_if(readout.ports.begin(),readout.ports.end(),[&](const auto &p) { return p.portId==s.portId; });
+            require(found!=readout.ports.end(),"Native piezo measurement requires a classified source port.");
+            const auto quantity=rStructuralPiezoReadoutQuantity(found->readout);
+            require((s.quantity==RStructuralNativeMeasurementQuantity::PiezoReadoutVoltage && quantity==RStructuralPiezoReadoutQuantity::Voltage) ||
+                    (s.quantity==RStructuralNativeMeasurementQuantity::PiezoReadoutCharge && quantity==RStructuralPiezoReadoutQuantity::Charge),
+                    "Native piezo measurement differs from its source readout quantity.");
+        }
+    }
     for(const auto &a:actions) {
         check(a.physicalNodeId,a.physicalMemberId,a.portId,targetKind(a.quantity));
         if(a.quantity==RStructuralNativeActionQuantity::CableReferenceLength) {

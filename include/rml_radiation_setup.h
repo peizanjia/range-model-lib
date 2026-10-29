@@ -33,6 +33,10 @@ class RRadiationSetup
         //! Copy constructor.
         RRadiationSetup(const RRadiationSetup &radiationSetup);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RRadiationSetup(RRadiationSetup &&) = default;
+        RRadiationSetup &operator=(RRadiationSetup &&) = default;
+
         //! Destructor.
         ~RRadiationSetup();
 

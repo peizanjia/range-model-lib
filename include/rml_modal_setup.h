@@ -61,6 +61,10 @@ class RModalSetup
         //! Copy constructor.
         RModalSetup(const RModalSetup &modalSetup);
 
+        //! Compiler-inferred moves permit allocation-free prepared publication.
+        RModalSetup(RModalSetup &&) = default;
+        RModalSetup &operator=(RModalSetup &&) = default;
+
         //! Destructor.
         ~RModalSetup();
 

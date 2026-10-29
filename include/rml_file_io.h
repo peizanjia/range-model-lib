@@ -50,6 +50,9 @@
 #include "rml_structural_truss_dynamics_setup.h"
 #include "rml_structural_truss_dynamics_restart_data.h"
 #include "rml_structural_native_control.h"
+#include "rml_structural_piezo_readout_setup.h"
+#include "rml_structural_piezo_layered_setup.h"
+#include "rml_structural_piezo_axial_setup.h"
 #include "rml_surface.h"
 #include "rml_volume.h"
 #include "rml_variable.h"
@@ -835,6 +838,28 @@ class RFileIO
         static void readBinary(RFile &inFile, RStructuralThermalControlSetup &setup);
         static void writeAscii(RSaveFile &outFile, const RStructuralThermalControlSetup &setup, bool addNewLine = true);
         static void writeBinary(RSaveFile &outFile, const RStructuralThermalControlSetup &setup);
+
+        static void readAscii(RFile &inFile, RStructuralPiezoLayeredSetup &data);
+        static void readBinary(RFile &inFile, RStructuralPiezoLayeredSetup &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoLayeredSetup &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoLayeredSetup &data);
+        static void readAscii(RFile &inFile, RStructuralPiezoLayeredRestart &data);
+        static void readBinary(RFile &inFile, RStructuralPiezoLayeredRestart &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoLayeredRestart &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoLayeredRestart &data);
+        static void readAscii(RFile &inFile, RStructuralPiezoAxialSetup &data);
+        static void readBinary(RFile &inFile, RStructuralPiezoAxialSetup &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoAxialSetup &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoAxialSetup &data);
+        static void readAscii(RFile &inFile, RStructuralPiezoAxialRestart &data);
+        static void readBinary(RFile &inFile, RStructuralPiezoAxialRestart &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoAxialRestart &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoAxialRestart &data);
+
+        static void readAscii(RFile &inFile, RStructuralPiezoReadoutSetup &data);
+        static void readBinary(RFile &inFile, RStructuralPiezoReadoutSetup &data);
+        static void writeAscii(RSaveFile &outFile, const RStructuralPiezoReadoutSetup &data, bool addNewLine = true);
+        static void writeBinary(RSaveFile &outFile, const RStructuralPiezoReadoutSetup &data);
 
         static void readAscii(RFile &inFile, RStructuralNativeControlSpec &data);
         static void readBinary(RFile &inFile, RStructuralNativeControlSpec &data);
